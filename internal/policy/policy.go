@@ -278,7 +278,11 @@ func globToRegexp(p string) string {
 			} else {
 				b.WriteString("[^/]*")
 			}
-		case '.', '+', '(', ')', '|', '^', '$', '{', '}', '[', ']', '\\', '?':
+		case '?':
+			// Single-character wildcard, consistent with path-glob matching in
+			// internal/secret so '?' means the same thing in refs and paths.
+			b.WriteString("[^/]")
+		case '.', '+', '(', ')', '|', '^', '$', '{', '}', '[', ']', '\\':
 			b.WriteByte('\\')
 			b.WriteByte(p[i])
 		default:

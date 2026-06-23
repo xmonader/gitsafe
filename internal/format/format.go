@@ -30,6 +30,11 @@ var Magic = []byte("\x00gitsafe\x00")
 // Version is the current envelope format version.
 const Version = 1
 
+// maxHeaderLen caps the declared header length Parse will honor. The header only
+// holds a small JSON recipient list; a larger value means a corrupt or hostile
+// blob, and the cap stops it from forcing a large slice/allocation.
+const maxHeaderLen = 1 << 20 // 1 MiB
+
 // header is the JSON metadata carried in plaintext alongside the ciphertext.
 type header struct {
 	V          int      `json:"v"`
@@ -71,6 +76,9 @@ func Parse(data []byte) (*Envelope, error) {
 		return nil, fmt.Errorf("truncated gitsafe header length")
 	}
 	hlen := binary.BigEndian.Uint32(rest[:4])
+	if hlen > maxHeaderLen {
+		return nil, fmt.Errorf("gitsafe header length %d exceeds maximum %d (corrupt blob)", hlen, maxHeaderLen)
+	}
 	rest = rest[4:]
 	if uint32(len(rest)) < hlen {
 		return nil, fmt.Errorf("truncated gitsafe header")

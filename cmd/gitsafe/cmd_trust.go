@@ -43,10 +43,10 @@ func writePin(rootPub string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 		return err
 	}
-	return os.WriteFile(p, []byte(rootPub+"\n"), 0o644)
+	return os.WriteFile(p, []byte(rootPub+"\n"), 0o600)
 }
 
 // verifiedPath is the per-clone cache of the last fully-verified policy head and
@@ -82,10 +82,10 @@ func writeVerified(head, rootPub string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 		return err
 	}
-	return os.WriteFile(p, []byte(head+" "+rootPub+"\n"), 0o644)
+	return os.WriteFile(p, []byte(head+" "+rootPub+"\n"), 0o600)
 }
 
 // trustedPolicy verifies the signed chain AND that its root matches this clone's
