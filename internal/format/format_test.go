@@ -65,3 +65,22 @@ func TestLockedPlaceholder(t *testing.T) {
 		t.Fatal("placeholder must not be detected as an envelope")
 	}
 }
+
+// FuzzParse ensures the envelope parser never panics on hostile input — it must
+// only ever return a value or an error.
+func FuzzParse(f *testing.F) {
+	f.Add(Wrap([]string{"age1aaa"}, []byte("ciphertext")))
+	f.Add([]byte("plain text"))
+	f.Add(append([]byte(nil), Magic...))
+	f.Add(LockedPlaceholder("x"))
+	f.Add([]byte{})
+	f.Fuzz(func(t *testing.T, data []byte) {
+		env, err := Parse(data)
+		if err == nil && env == nil {
+			t.Fatal("Parse returned nil env and nil error")
+		}
+		// IsWrapped/IsLockedPlaceholder must also never panic.
+		_ = IsWrapped(data)
+		_ = IsLockedPlaceholder(data)
+	})
+}

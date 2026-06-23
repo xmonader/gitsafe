@@ -2,7 +2,7 @@
 
 **git-crypt with access control.** Encrypt secrets in your git repo to exactly the people who can read the branch — enforced by a signed policy that verifies offline, with no vendor.
 
-> Status: **working MVP**. The CLI, clean/smudge filters, signed policy chain, and branch-scoped recipients are implemented and covered by a real-git end-to-end test (`make e2e`). See [`docs/design.md`](docs/design.md) for the architecture and [`docs/strategy.md`](docs/strategy.md) for positioning.
+> Status: **v0.1 — hardened core.** The CLI, clean/smudge filters, signed policy chain, branch-scoped recipients, root-pinned offline verification, atomic policy writes, and key rotation are implemented and covered by unit, fuzz, race, and real-git end-to-end tests (CI runs all on every push). See the [Security model](#security-model--threat-boundaries) for the threat boundaries, [`docs/design.md`](docs/design.md) for the architecture, and [`docs/strategy.md`](docs/strategy.md) for positioning.
 
 ---
 
@@ -64,6 +64,19 @@ git add .gitsafe .env && git commit -m "grant bob read on staging"
 
 Now bob, after a pull, sees plaintext for `staging`'s secrets; anyone without read access sees a clear locked placeholder and can't decrypt. Revoke bob (`gitsafe member revoke bob` or `gitsafe revoke bob read staging`) then `gitsafe rotate` to cut him out of future ciphertext.
 
+### Cloning a gitsafe repo
+
+git's filters and the trust pin are **per-clone** and do not travel in the repo (by design — a repo cannot vouch for itself). After cloning:
+
+```bash
+gitsafe key gen                 # if you don't already have an identity
+gitsafe init --user bob         # wires the filters; prints the policy root fingerprint
+gitsafe trust                   # pin the root AFTER verifying the fingerprint out-of-band
+git checkout -- .               # re-run smudge now that filters are active
+```
+
+Until you pin the root with `gitsafe trust`, gitsafe **refuses to encrypt** (it won't commit a secret against a policy it hasn't been told to trust). This is the SSH `known_hosts` model: trust is established deliberately, once, and a later change to the policy root is treated as a possible attack.
+
 ## Commands
 
 | Command | What it does |
@@ -75,8 +88,9 @@ Now bob, after a pull, sees plaintext for `staging`'s secrets; anyone without re
 | `gitsafe grant SUBJECT VERB RESOURCE` | Grant `read`/`write`/`admin` on a ref glob |
 | `gitsafe revoke SUBJECT VERB RESOURCE` | Remove a matching grant |
 | `gitsafe rotate` | Re-encrypt all marked files to the current readers and stage them |
+| `gitsafe trust [--fingerprint HEX] [--force]` | Pin this clone to the policy root (TOFU) |
 | `gitsafe policy show` | Print the current keyring and grants |
-| `gitsafe policy verify` | Verify the signed policy chain offline |
+| `gitsafe policy verify` | Verify the signed chain offline + show root fingerprint and pin status |
 | `gitsafe clean` / `smudge` | The git filters (invoked by git, not by hand) |
 
 `RESOURCE` is a ref glob; a bare branch name is shorthand for `refs/heads/<name>`. Verbs form a hierarchy: `admin > force > write > read`.
@@ -87,10 +101,19 @@ Files matching the marks in `.gitattributes` (`*.env`, `*.pem`, `secrets/**`, �
 
 The policy — keyring, grants, branch→reader rules — lives as an ed25519-signed object chain committed under `.gitsafe/policy/` and verifies offline with nothing but the repo. Private keys live in `~/.config/gitsafe/` and never touch the repo.
 
-Two correctness details worth knowing:
+Three correctness/security properties worth knowing:
 
+- **Verified before trusted.** Before the clean filter uses any recipient the policy names, it verifies the whole ed25519 chain *and* that its root matches the fingerprint this clone pinned with `gitsafe trust`. A poisoned policy (a tampered or wholesale-replaced chain merged into the repo) is refused rather than used to redirect a secret's encryption to an attacker's key.
 - **Deterministic re-staging.** age output is randomized, which would make `git status` think every secret is always modified. The clean filter recognizes an unchanged secret with an unchanged reader set and re-emits the stored ciphertext byte-for-byte, so status stays clean.
 - **Placeholder safety.** A locked user sees a placeholder, not the secret. If they re-stage it, the clean filter detects the placeholder and re-emits the stored ciphertext rather than encrypting the placeholder over the real secret — so a non-reader can never destroy data they can't see.
+
+## Security model & threat boundaries
+
+- **Private keys** live in `~/.config/gitsafe/`, never in the repo. The policy carries only public keys.
+- **Trust anchor:** the policy root is self-signed; each clone pins the root's public key locally (`.git/gitsafe/root`, TOFU). Verify the fingerprint out-of-band on first trust — `gitsafe policy verify` prints it and the pin status.
+- **What an attacker who controls repo *contents* cannot do:** make you encrypt a new secret to their key. Tampering with `.gitsafe/policy/` either breaks chain verification or fails the root-pin check, and the clean filter refuses.
+- **What is NOT in scope:** an attacker with write access to your local `.git/` (game over for any tool), and **read-after-revocation** — see below.
+- **Revocation is forward-only.** `member revoke` + `rotate` re-encrypts *future* blobs without the revoked reader. It does **not** retroactively protect secrets already in git history: a revoked member who kept an old clone (or the packfiles) can still decrypt the ciphertext that was encrypted to them. **Treat any secret a revoked member could read as compromised and rotate the secret value itself**, exactly as you would after any key exposure. This is inherent to encryption-at-rest in an append-only history, not specific to gitsafe.
 
 ## Limitations (MVP)
 
@@ -103,9 +126,11 @@ Two correctness details worth knowing:
 
 ```bash
 make build   # build ./gitsafe
-make test    # unit tests
-make e2e     # real-git end-to-end test
+make test    # unit + real-git end-to-end tests
+make e2e     # just the end-to-end test, verbose
 make lint    # go vet
+go test -race ./...                                          # race detector
+go test ./internal/format -run xxx -fuzz FuzzParse          # fuzz the envelope parser
 ```
 
 ## Heritage
