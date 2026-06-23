@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -188,7 +189,7 @@ func (p *Policy) Recipients(resource string) []string {
 			out = append(out, m.Enc)
 		}
 	}
-	sortStrings(out)
+	sort.Strings(out)
 	return out
 }
 
@@ -205,7 +206,7 @@ func (p *Policy) ReaderNames(resource string) []string {
 			out = append(out, name)
 		}
 	}
-	sortStrings(out)
+	sort.Strings(out)
 	return out
 }
 
@@ -270,14 +271,4 @@ func globToRegexp(p string) string {
 		}
 	}
 	return b.String()
-}
-
-// sortStrings is a tiny insertion sort (avoids pulling in sort for one call;
-// recipient lists are small).
-func sortStrings(xs []string) {
-	for i := 1; i < len(xs); i++ {
-		for j := i; j > 0 && xs[j-1] > xs[j]; j-- {
-			xs[j-1], xs[j] = xs[j], xs[j-1]
-		}
-	}
 }

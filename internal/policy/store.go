@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
@@ -52,7 +53,7 @@ func (s *Store) head() (string, error) {
 		}
 		return "", err
 	}
-	return string(trimSpace(b)), nil
+	return string(bytes.TrimSpace(b)), nil
 }
 
 // loadObject reads and integrity-checks a single policy object.
@@ -237,20 +238,4 @@ func (s *Store) VerifyChainRoot() (int, string, error) {
 	root := chain[len(chain)-1]
 	rootPub := root.Keyring[root.Signer].Sign
 	return len(chain), rootPub, nil
-}
-
-// trimSpace trims surrounding ASCII whitespace without importing strings.
-func trimSpace(b []byte) []byte {
-	i, j := 0, len(b)
-	for i < j && isSpace(b[i]) {
-		i++
-	}
-	for j > i && isSpace(b[j-1]) {
-		j--
-	}
-	return b[i:j]
-}
-
-func isSpace(c byte) bool {
-	return c == ' ' || c == '\t' || c == '\n' || c == '\r'
 }
