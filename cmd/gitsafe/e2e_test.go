@@ -111,6 +111,19 @@ func TestEndToEnd(t *testing.T) {
 		t.Fatalf("locked bob's status must stay clean (no placeholder corruption), got:\n%s", st)
 	}
 
+	// Locked bob must NOT be able to rotate (he can't re-encrypt what he can't
+	// read); rotate must refuse rather than silently no-op.
+	{
+		cmd := exec.Command(bin, "rotate")
+		cmd.Dir = repo
+		cmd.Env = env(bobID)
+		if out, err := cmd.CombinedOutput(); err == nil {
+			t.Fatalf("locked bob's rotate must fail, but succeeded:\n%s", out)
+		} else if !strings.Contains(string(out), "locked") {
+			t.Fatalf("expected a 'locked' refusal from bob's rotate, got:\n%s", out)
+		}
+	}
+
 	// Alice grants bob read on main and rotates.
 	gitsafe(t, aliceID, "grant", "bob", "read", "main")
 	// Restore alice's plaintext working tree before rotating (renormalize cleans

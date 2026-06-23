@@ -145,6 +145,19 @@ func FilteredFiles() ([]string, error) {
 	return marked, nil
 }
 
+// StagedChanges returns the paths whose staged blob differs from HEAD — i.e.
+// what an operation actually changed in the index.
+func StagedChanges() ([]string, error) {
+	out, err := runStr("diff", "--cached", "--name-only")
+	if err != nil {
+		return nil, err
+	}
+	if out == "" {
+		return nil, nil
+	}
+	return strings.Split(out, "\n"), nil
+}
+
 // AddRenormalize re-applies the clean filter to the given paths and stages the
 // result. With changed recipients this re-encrypts secrets to the new reader
 // set; the new ciphertext is just a normal staged blob.

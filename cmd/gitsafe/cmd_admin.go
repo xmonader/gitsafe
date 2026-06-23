@@ -3,8 +3,11 @@ package main
 import (
 	"crypto/ed25519"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 
+	"gitsafe/internal/format"
 	"gitsafe/internal/gitx"
 	"gitsafe/internal/policy"
 )
@@ -193,7 +196,8 @@ func grantID(subject, verb, resource string) string {
 }
 
 func cmdRotate(args []string) error {
-	if _, err := loadRepo(); err != nil {
+	rc, err := loadRepo()
+	if err != nil {
 		return err
 	}
 	files, err := gitx.FilteredFiles()
@@ -204,11 +208,32 @@ func cmdRotate(args []string) error {
 		fmt.Println("No gitsafe-marked files tracked; nothing to rotate.")
 		return nil
 	}
+	// Refuse if the working tree holds locked placeholders: a non-reader cannot
+	// re-encrypt what they cannot decrypt, and silently preserving the old
+	// ciphertext would make rotation a no-op disguised as success.
+	for _, f := range files {
+		data, rerr := os.ReadFile(filepath.Join(rc.root, f))
+		if rerr != nil {
+			continue // not in the working tree (e.g. deleted); skip
+		}
+		if format.IsLockedPlaceholder(data) {
+			return fmt.Errorf("cannot rotate: %q is locked (you lack read access).\n"+
+				"Rotation must be run by someone who can read these secrets", f)
+		}
+	}
 	if err := gitx.AddRenormalize(files); err != nil {
 		return err
 	}
-	fmt.Printf("Re-encrypted and staged %d file(s) to the current reader set:\n", len(files))
-	for _, f := range files {
+	changed, err := gitx.StagedChanges()
+	if err != nil {
+		return err
+	}
+	if len(changed) == 0 {
+		fmt.Println("Secrets already match the current reader set; nothing to re-encrypt.")
+		return nil
+	}
+	fmt.Printf("Re-encrypted and staged %d file(s) to the current reader set:\n", len(changed))
+	for _, f := range changed {
 		fmt.Printf("  %s\n", f)
 	}
 	fmt.Println("Commit to finish: git commit -m \"gitsafe: rotate secrets\"")
