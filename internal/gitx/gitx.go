@@ -138,3 +138,15 @@ func FilteredFiles() ([]string, error) {
 	}
 	return marked, nil
 }
+
+// AddRenormalize re-applies the clean filter to the given paths and stages the
+// result. With changed recipients this re-encrypts secrets to the new reader
+// set; the new ciphertext is just a normal staged blob.
+func AddRenormalize(paths []string) error {
+	if len(paths) == 0 {
+		return nil
+	}
+	args := append([]string{"add", "--renormalize", "--"}, paths...)
+	_, err := run(args...)
+	return err
+}
