@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>gitsafe — git-crypt with access control</title>
-<meta name="description" content="Encrypt secrets in your git repo to exactly the people who can read the branch — enforced by a signed policy that verifies offline, with no vendor." />
-<meta property="og:title" content="gitsafe — git-crypt with access control" />
-<meta property="og:description" content="Branch-scoped, signed, offline-verifiable secret encryption on top of real git. No server. No vendor." />
+<title>gitsafe — keep secrets in git, readable only by the people you allow</title>
+<meta name="description" content="Commit secrets straight into your git repo. They're stored encrypted, and only the people you give access to can read them. No server, no cloud service." />
+<meta property="og:title" content="gitsafe — keep secrets in git, readable only by the people you allow" />
+<meta property="og:description" content="Commit secrets into your git repo, stored encrypted. Only the people you allow can read them — and it all works offline, with no server or vendor." />
 <meta property="og:type" content="website" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230a0b0d'/%3E%3Cpath d='M11 14v-2a5 5 0 0 1 10 0v2h1a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h1zm2 0h6v-2a3 3 0 0 0-6 0v2z' fill='%23e0a34f'/%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -251,9 +251,9 @@
 <header class="hero">
   <div class="wrap hero-grid">
     <div>
-      <span class="eyebrow reveal" style="animation-delay:.05s">git-crypt · with access control</span>
-      <h1 class="title reveal" style="animation-delay:.12s">Secrets in git,<br>readable only by<br>the <span class="amp">right branch.</span></h1>
-      <p class="lede reveal" style="animation-delay:.22s">Encrypt marked files to <b>exactly the people who can read the branch</b> — enforced by a signed policy that verifies offline. No server. No vendor.</p>
+      <span class="eyebrow reveal" style="animation-delay:.05s">secrets in git · safely</span>
+      <h1 class="title reveal" style="animation-delay:.12s">Keep secrets in git.<br>Readable only by<br>the <span class="amp">people you allow.</span></h1>
+      <p class="lede reveal" style="animation-delay:.22s">Commit your secret files straight into the repo. They're stored <b>encrypted</b> — and only the people you give access to can read them. No server. No cloud service.</p>
       <div class="cta reveal" style="animation-delay:.30s">
         <a class="btn btn-primary" href="#start">Get started</a>
         <a class="btn btn-ghost" href="https://github.com/xmonader/gitsafe">Read the code ↗</a>
@@ -290,22 +290,22 @@
 <section id="problem">
   <div class="wrap">
     <div class="sec-head">
-      <span class="eyebrow">The gap</span>
-      <h2>Every existing option makes you choose.</h2>
-      <p>Keep secrets near your code and you trade away access control, rotation, or your independence from a vendor.</p>
+      <span class="eyebrow">The problem</span>
+      <h2>Today you have to pick the lesser evil.</h2>
+      <p>You want secrets next to your code — but not readable by everyone, and easy to take away later. Every existing option drops one of those.</p>
     </div>
     <div class="cards3">
       <div class="card">
         <h3><span class="x">✕</span>git-crypt</h3>
-        <p>Encrypts marked files, but the access list is “whoever has a key in the repo.” No notion of who can read which branch, no rotation, no portable audit of grants.</p>
+        <p>Encrypts files in git, but "who can read" is just "whoever has a key." No way to say who can read which branch, and no clean way to cut someone off when they leave.</p>
       </div>
       <div class="card">
         <h3><span class="x">✕</span>SOPS</h3>
-        <p>Encrypts values to recipients you maintain by hand in <span class="code">.sops.yaml</span>. No branch-scoped access, no verifiable history of who was granted what.</p>
+        <p>Encrypts files, but you hand-edit the list of who's allowed in <span class="code">.sops.yaml</span>. No branch-based access, and no record of who was given what.</p>
       </div>
       <div class="card">
         <h3><span class="x">✕</span>Vault / Doppler</h3>
-        <p>Strong — but they pull secrets <em>out</em> of the repo into a SaaS. You swap “secret in git” for a hard dependency, and the policy lives in their database, not with your code.</p>
+        <p>Powerful — but they pull your secrets <em>out</em> of git and into a paid cloud service you now depend on. The access rules live in their database, not with your code.</p>
       </div>
     </div>
   </div>
@@ -314,25 +314,25 @@
 <section id="how">
   <div class="wrap">
     <div class="sec-head">
-      <span class="eyebrow">The wedge</span>
-      <h2>Recipients are derived from who can read the branch.</h2>
-      <p>Grant someone read access to <span class="code">staging</span> and they can decrypt <span class="code">staging</span>’s secrets. You never maintain two lists. Revoke them and <span class="code">rotate</span> re-encrypts to the new reader set.</p>
+      <span class="eyebrow">The idea</span>
+      <h2>Who can read the branch is who can read its secrets.</h2>
+      <p>Give someone read access to <span class="code">staging</span> and they can decrypt <span class="code">staging</span>'s secrets — automatically. You never keep two lists. Remove them, run <span class="code">rotate</span>, and the secrets are re-encrypted without them.</p>
     </div>
     <div class="steps">
       <div class="step">
         <span class="num">01 / MARK</span>
-        <h3>Mark the secrets</h3>
-        <p>Paths in <code>.gitattributes</code> (<code>.env</code>, <code>*.pem</code>, <code>secrets/**</code>) get the gitsafe filter — committed, so they travel with the repo.</p>
+        <h3>Mark what's secret</h3>
+        <p>List the secret paths in <code>.gitattributes</code> (<code>.env</code>, <code>*.pem</code>, <code>secrets/**</code>). It's committed, so the rule travels with the repo.</p>
       </div>
       <div class="step">
-        <span class="num">02 / CLEAN</span>
-        <h3>Encrypt on add</h3>
-        <p>The clean filter verifies the signed policy, resolves the current branch’s readers, and encrypts with <a href="https://age-encryption.org">age</a> to exactly those keys.</p>
+        <span class="num">02 / ADD</span>
+        <h3>Encrypted on add</h3>
+        <p>When you <code>git add</code>, gitsafe finds who can read the current branch and encrypts the file to exactly them with <a href="https://age-encryption.org">age</a>. Git stores the encrypted version.</p>
       </div>
       <div class="step">
-        <span class="num">03 / SMUDGE</span>
-        <h3>Decrypt on checkout</h3>
-        <p>Authorized identities get plaintext. Everyone else gets a clear locked placeholder — the checkout never breaks, the secret never leaks.</p>
+        <span class="num">03 / CHECKOUT</span>
+        <h3>Decrypted on checkout</h3>
+        <p>If you're allowed, the file is decrypted for you. If not, you get a clear "locked" note instead of the secret — your checkout never breaks.</p>
       </div>
     </div>
 
@@ -341,7 +341,7 @@
     </div>
     <div class="views">
       <div class="view read">
-        <div class="vh">◆ alice — granted read on this branch</div>
+        <div class="vh">◆ alice — allowed to read this branch</div>
         <pre>$ cat secrets/prod.env
 STRIPE_KEY=sk_live_9f2a…c71
 DATABASE_URL=postgres://…
@@ -364,7 +364,7 @@ JWT_SECRET=Hx9-…</pre>
     <div class="sec-head">
       <span class="eyebrow">The comparison</span>
       <h2>Two columns nobody else fills.</h2>
-      <p>Branch-scoped access and a portable, signed policy — the entire reason gitsafe exists.</p>
+      <p>Branch-based access and an access list that's signed and travels with the repo — the two things that make gitsafe different.</p>
     </div>
     <div class="tablewrap">
       <table>
@@ -372,10 +372,10 @@ JWT_SECRET=Hx9-…</pre>
           <tr>
             <th>Tool</th>
             <th class="c">Encrypts in git</th>
-            <th class="c">Branch-scoped</th>
-            <th class="c">Signed policy</th>
-            <th class="c">Rotation</th>
-            <th class="c">Vendor-free</th>
+            <th class="c">Per-branch access</th>
+            <th class="c">Tamper-proof rules</th>
+            <th class="c">Easy rotation</th>
+            <th class="c">No vendor</th>
           </tr>
         </thead>
         <tbody>
@@ -393,26 +393,26 @@ JWT_SECRET=Hx9-…</pre>
 <section id="security">
   <div class="wrap">
     <div class="sec-head">
-      <span class="eyebrow">The guarantees</span>
-      <h2>Verified before trusted.</h2>
-      <p>The encrypt path refuses to act on a policy it can’t verify — so you can’t be tricked into encrypting a secret to an attacker’s key.</p>
+      <span class="eyebrow">Is it safe?</span>
+      <h2>Checked before trusted.</h2>
+      <p>gitsafe won't encrypt anything against an access list it can't verify — so nobody can trick you into encrypting a secret to their own key.</p>
     </div>
     <div class="sec-grid">
       <div class="sbox">
-        <h3>Signed, chained policy</h3>
-        <p>Keyring and grants live as an ed25519-signed object chain committed in the repo. Every version is signed by an admin and links to its parent by hash — tamper with any of it and verification fails.</p>
+        <h3>The access list is tamper-evident</h3>
+        <p>The list of who's allowed is signed and stored in the repo. Change any part of it without the right key and verification fails — so you can always tell it's genuine.</p>
       </div>
       <div class="sbox">
-        <h3>Offline trust anchor</h3>
-        <p>Each clone pins the policy root (TOFU, like SSH <span class="code">known_hosts</span>). A wholesale root replacement — which would otherwise verify as consistent — is detected and refused.</p>
+        <h3>You confirm trust once</h3>
+        <p>Each clone remembers the access list's fingerprint the first time you trust it — just like SSH asks "are you sure?" the first time. If it's later swapped out, gitsafe stops.</p>
       </div>
       <div class="sbox">
         <h3>Private keys stay out</h3>
-        <p>Identities live in <span class="code">~/.config/gitsafe</span> and never enter the repo. The policy carries only public keys.</p>
+        <p>Your keys live in <span class="code">~/.config/gitsafe</span> and never enter the repo. The repo only ever holds public keys.</p>
       </div>
       <div class="sbox">
-        <h3>No false confidence</h3>
-        <p>Tested with unit, fuzz, race, and real-git end-to-end suites — and the <a href="https://github.com/xmonader/gitsafe/blob/main/docs/threat-model.md">threat model</a> states exactly what is and isn’t protected, including read-after-revocation.</p>
+        <h3>Honest about the limits</h3>
+        <p>Covered by automated tests on every change — and the <a href="https://github.com/xmonader/gitsafe/blob/main/docs/threat-model.md">threat model</a> spells out exactly what's protected and what isn't, including old secrets after you remove someone.</p>
       </div>
     </div>
     <div class="term verify">
@@ -434,18 +434,18 @@ JWT_SECRET=Hx9-…</pre>
       <h2>Protect your first secret in four lines.</h2>
     </div>
     <div class="qs">
-<pre><span class="c-pr">$</span> <span class="c-cmd">gitsafe key gen</span>                 <span class="c-dim"># one-time: your private identity</span>
-<span class="c-pr">$</span> <span class="c-cmd">gitsafe init --user alice</span>       <span class="c-dim"># wire filters + bootstrap policy</span>
+<pre><span class="c-pr">$</span> <span class="c-cmd">gitsafe key gen</span>                 <span class="c-dim"># one time: create your private key</span>
+<span class="c-pr">$</span> <span class="c-cmd">gitsafe init --user alice</span>       <span class="c-dim"># turn gitsafe on for this repo</span>
 <span class="c-pr">$</span> <span class="c-cmd">echo "API_KEY=sk-live-…" &gt; .env</span>
-<span class="c-pr">$</span> <span class="c-cmd">git add .env &amp;&amp; git commit -m "encrypt secret"</span>
+<span class="c-pr">$</span> <span class="c-cmd">git add .env &amp;&amp; git commit -m "add a secret"</span>
 
-<span class="c-dim"># add a teammate, branch-scoped:</span>
+<span class="c-dim"># give a teammate access to one branch:</span>
 <span class="c-pr">$</span> <span class="c-cmd">gitsafe member add bob --sign &lt;hex&gt; --enc age1…</span>
 <span class="c-pr">$</span> <span class="c-cmd">gitsafe grant bob read staging</span>
-<span class="c-pr">$</span> <span class="c-cmd">gitsafe rotate</span>                   <span class="c-key"># re-encrypt to the new reader set</span></pre>
+<span class="c-pr">$</span> <span class="c-cmd">gitsafe rotate</span>                   <span class="c-key"># re-encrypt so bob is now included</span></pre>
     </div>
     <div class="note">
-      <b>Status — v0.1, hardened core.</b> CLI, clean/smudge filters, signed policy chain, branch-scoped recipients, root-pinned offline verification, and rotation are implemented and covered by unit, fuzz, race, and real-git end-to-end tests. Not yet externally audited.
+      <b>Status — v0.1, working core.</b> The command-line tool, the encrypt/decrypt filters, the signed access list, per-branch access, offline verification, and key rotation all work and are covered by automated tests that run on every change. Not yet independently security-audited.
     </div>
   </div>
 </section>
@@ -460,19 +460,19 @@ JWT_SECRET=Hx9-…</pre>
       <a class="doccard" href="https://github.com/xmonader/gitsafe/blob/main/docs/tutorial.md">
         <span class="k">Tutorial</span>
         <h3>Learn by doing</h3>
-        <p>Eight real workflows: first secret, onboarding, branch-scoped access, cloning, offboarding, CI, auditing.</p>
+        <p>Step by step: your first secret, adding a teammate, per-branch access, cloning, removing someone, CI, and auditing.</p>
         <span class="arr">→</span>
       </a>
       <a class="doccard" href="https://github.com/xmonader/gitsafe/blob/main/docs/userguide.md">
         <span class="k">User Guide</span>
         <h3>The reference</h3>
-        <p>Concepts, on-disk layout, the policy and trust models, the full command reference, and troubleshooting.</p>
+        <p>Concepts, where files live, how access and trust work, every command, and troubleshooting.</p>
         <span class="arr">→</span>
       </a>
       <a class="doccard" href="https://github.com/xmonader/gitsafe/blob/main/docs/threat-model.md">
         <span class="k">Threat Model</span>
-        <h3>What it defends</h3>
-        <p>Assets, trust boundaries, adversaries, residual risks, and where each guarantee is enforced in code.</p>
+        <h3>What it protects</h3>
+        <p>Exactly what gitsafe defends against, what it doesn't, and where each protection lives in the code.</p>
         <span class="arr">→</span>
       </a>
     </div>
@@ -481,7 +481,7 @@ JWT_SECRET=Hx9-…</pre>
 
 <footer>
   <div class="wrap">
-    <span class="mono">gitsafe — git-crypt with access control. Built on age + ed25519.</span>
+    <span class="mono">gitsafe — secrets in git, readable only by the people you allow. Built on age + ed25519.</span>
     <span class="mono"><a href="https://github.com/xmonader/gitsafe">github.com/xmonader/gitsafe</a></span>
   </div>
 </footer>

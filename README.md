@@ -1,33 +1,39 @@
 # gitsafe
 
-**git-crypt with access control.** Encrypt secrets in your git repo to exactly the people who can read the branch — enforced by a signed policy that verifies offline, with no vendor.
+**Keep secrets in your git repo — encrypted, and readable only by the people you allow.**
 
-> Status: **v0.1 — hardened core.** The CLI, clean/smudge filters, signed policy chain, branch-scoped recipients, root-pinned offline verification, atomic policy writes, and key rotation are implemented and covered by unit, fuzz, race, and real-git end-to-end tests (CI runs all on every push). See the [Security model](#security-model--threat-boundaries) for the threat boundaries, [`docs/design.md`](docs/design.md) for the architecture, and [`docs/strategy.md`](docs/strategy.md) for positioning.
+gitsafe lets you commit secret files (like `.env`, API keys, or certificates) straight into your git repo. They're stored **encrypted**, so anyone who clones the repo without permission just sees scrambled bytes. The people you've granted access to see the real contents automatically — no extra steps, no separate password vault, no cloud service.
+
+> Status: **v0.1 — working core.** The command-line tool, the encrypt/decrypt filters, the access rules, offline verification, and key rotation all work and are covered by automated tests that run on every change. Not yet independently security-audited. See [Is it safe?](#is-it-safe) for exactly what is and isn't protected.
 
 ---
 
-## The problem
+## The problem in one sentence
 
-Teams that keep secrets near their code today pick from bad options:
+You want to keep passwords and keys *next to your code* (handy, versioned, travels with the repo) — but you **don't** want everyone who can see the repo to be able to read them, and you want an easy way to cut someone off later.
 
-- **`git-crypt`** — encrypts marked files in git, but the access list is "whoever has a GPG key in the repo." No notion of *who can read which branch*, no rotation story, no portable audit of who was granted what.
-- **`SOPS`** — encrypts values to KMS/age/PGP recipients, but you manage the recipient list by hand in `.sops.yaml`, and it has no concept of branch-scoped access or a verifiable grant history.
-- **Vault / Doppler / Infisical** — strong, but they pull secrets *out* of the repo into a vendor service. You trade "secret in git" for "hard dependency on a SaaS / cluster," and the access policy lives in their database, not with your code.
+Today you have to pick the lesser evil:
 
-None of them answer **"who is allowed to read this, provably, and how do I rotate when that changes?"** in a way that travels with the repository.
+- **git-crypt** — encrypts files in git, but "who can read" is just "whoever has a key." No way to say *who can read which branch*, and no clean way to rotate keys when someone leaves.
+- **SOPS** — encrypts files, but you hand-edit the list of who's allowed in a config file. No branch-based access, no record of who was granted what.
+- **Vault / Doppler / Infisical** — powerful, but they pull your secrets *out* of git and into a paid cloud service you now depend on.
 
-## The wedge
+## What gitsafe adds
 
-gitsafe adds the one thing the file-based tools lack: a **portable, signed, offline-verifiable access policy** where a secret's decryption recipients are *derived from* who can read its branch. Grant someone read access to `staging` and they can decrypt `staging`'s secrets — you never maintain two lists. Revoke them and `gitsafe rotate` re-encrypts to the new reader set. Every policy version is ed25519-signed and chained, so anyone can verify offline that it wasn't forged or rewritten — no server required, no vendor trusted.
+One simple idea: **the people who can read a branch are the people who can decrypt that branch's secrets.**
 
-It runs **on top of real git**: clean/smudge filters, a signed policy committed in the repo, recipients resolved from the current branch. Your host, CI, IDE, and review flow are untouched.
+Grant someone read access to `staging`, and they can now decrypt `staging`'s secrets. You never keep two separate lists. Remove them, run one command, and the secrets get re-encrypted without them.
+
+The list of who's allowed lives in the repo as a **signed file**, so anyone can check it's genuine and hasn't been tampered with — using nothing but the repo itself. No server, no account, no vendor.
+
+It plugs into your existing git repo (using git's built-in "filters"). Your git host, CI, editor, and pull-request workflow keep working exactly as before.
 
 ## Documentation
 
-- **[Tutorial](docs/tutorial.md)** — learn by doing: protect your first secret, onboard a teammate, branch-scoped access, cloning, offboarding, CI, auditing.
-- **[User Guide](docs/userguide.md)** — reference: concepts, on-disk layout, the policy & trust models, full command reference, troubleshooting.
-- **[Threat Model](docs/threat-model.md)** — assets, trust boundaries, adversaries, residual risks, and where each gate is enforced.
-- **[Design](docs/design.md)** · **[Strategy](docs/strategy.md)** — architecture and positioning.
+- **[Tutorial](docs/tutorial.md)** — learn by doing: protect your first secret, add a teammate, branch-based access, cloning, removing someone, CI, auditing.
+- **[User Guide](docs/userguide.md)** — the reference: concepts, where files live, how access and trust work, every command, and troubleshooting.
+- **[Threat Model](docs/threat-model.md)** — exactly what gitsafe protects against, what it doesn't, and where each protection lives in the code.
+- **[Design](docs/design.md)** · **[Strategy](docs/strategy.md)** — how it's built and why.
 
 ## Install
 
@@ -37,22 +43,22 @@ sudo install -m 0755 gitsafe /usr/local/bin/gitsafe
 # or: make install DESTDIR=
 ```
 
-Requires Go 1.25+ to build and `git` on PATH at runtime.
+Needs Go 1.25+ to build, and `git` available when you run it.
 
 ## Quick start
 
 ```bash
 cd my-repo
 
-gitsafe key gen                 # one-time: create your private identity (~/.config/gitsafe)
-gitsafe init --user alice       # wire up filters, .gitattributes, and bootstrap the policy
+gitsafe key gen                 # one time: create your private key (saved in ~/.config/gitsafe)
+gitsafe init --user alice       # turn on gitsafe for this repo and set yourself as the first admin
 
 echo "DB_PASSWORD=hunter2" > .env
 git add .gitsafe .gitattributes .env
-git commit -m "enable gitsafe + add secret"
+git commit -m "turn on gitsafe + add a secret"
 
-git cat-file blob HEAD:.env     # <- ciphertext in git
-cat .env                        # <- plaintext in your working tree (you can read it)
+git cat-file blob HEAD:.env     # what git stored -> encrypted gibberish
+cat .env                        # your working copy -> real password (you can read it)
 ```
 
 Add a teammate:
@@ -60,88 +66,92 @@ Add a teammate:
 ```bash
 # bob, on his machine:
 gitsafe key gen
-gitsafe key show                # prints his public sign + enc keys
+gitsafe key show                # prints his two public keys
 
 # you (an admin):
 gitsafe member add bob --sign <hex> --enc <age1...>
-gitsafe grant bob read staging  # bare name => refs/heads/staging
-gitsafe rotate                  # re-encrypt marked files to the new reader set
-git add .gitsafe .env && git commit -m "grant bob read on staging"
+gitsafe grant bob read staging  # a bare branch name means refs/heads/staging
+gitsafe rotate                  # re-encrypt the secret files so bob is now included
+git add .gitsafe .env && git commit -m "give bob read access on staging"
 ```
 
-Now bob, after a pull, sees plaintext for `staging`'s secrets; anyone without read access sees a clear locked placeholder and can't decrypt. Revoke bob (`gitsafe member revoke bob` or `gitsafe revoke bob read staging`) then `gitsafe rotate` to cut him out of future ciphertext.
+After bob pulls, he sees the real secrets for `staging`. Anyone *without* access sees a clear "you're locked out" placeholder instead — and can't read the secret. To cut bob off later, run `gitsafe member revoke bob` (or `gitsafe revoke bob read staging`) and then `gitsafe rotate`.
 
-### Cloning a gitsafe repo
+### After you clone a gitsafe repo
 
-git's filters and the trust pin are **per-clone** and do not travel in the repo (by design — a repo cannot vouch for itself). After cloning:
+A couple of things are deliberately **not** stored in the repo — your private key (obviously) and your decision to trust this repo's access list. So after cloning:
 
 ```bash
-gitsafe key gen                 # if you don't already have an identity
-gitsafe init --user bob         # wires the filters; prints the policy root fingerprint
-gitsafe trust                   # pin the root AFTER verifying the fingerprint out-of-band
-git checkout -- .               # re-run smudge now that filters are active
+gitsafe key gen                 # if you don't already have a key
+gitsafe init --user bob         # turn on the filters; prints the policy's fingerprint
+gitsafe trust                   # confirm you trust this repo's access list (check the fingerprint first!)
+git checkout -- .               # re-run decryption now that gitsafe is active
 ```
 
-Until you pin the root with `gitsafe trust`, gitsafe **refuses to encrypt** (it won't commit a secret against a policy it hasn't been told to trust). This is the SSH `known_hosts` model: trust is established deliberately, once, and a later change to the policy root is treated as a possible attack.
+Until you run `gitsafe trust`, gitsafe **won't encrypt anything**. This is the same idea as SSH asking "are you sure?" the first time you connect to a server: you confirm trust once, on purpose. If the repo's access list later gets swapped out, gitsafe treats that as a possible attack and stops.
 
 ## Commands
 
 | Command | What it does |
 |---------|--------------|
-| `gitsafe key gen` / `key show` | Create / print your keypair (private key never enters the repo) |
-| `gitsafe init [--user NAME]` | Register the git filter, write default marks, bootstrap policy v0 |
-| `gitsafe member add NAME --sign HEX --enc age1...` | Add a member to the signed keyring |
-| `gitsafe member revoke NAME` | Mark a member revoked (then `rotate`) |
-| `gitsafe grant SUBJECT VERB RESOURCE` | Grant `read`/`write`/`admin` on a ref glob |
-| `gitsafe revoke SUBJECT VERB RESOURCE` | Remove a matching grant |
-| `gitsafe rotate` | Re-encrypt all marked files to the current readers and stage them |
-| `gitsafe trust [--fingerprint HEX] [--force]` | Pin this clone to the policy root (TOFU) |
-| `gitsafe access RESOURCE` | Show who can decrypt secrets on a branch/ref |
-| `gitsafe whoami` | Show your identity and policy membership |
-| `gitsafe policy show` | Print the current keyring and grants |
-| `gitsafe policy verify` | Verify the signed chain offline + show root fingerprint and pin status |
-| `gitsafe clean` / `smudge` | The git filters (invoked by git, not by hand) |
+| `gitsafe key gen` / `key show` | Create / print your keys (your private key never goes into the repo) |
+| `gitsafe init [--user NAME]` | Turn gitsafe on for this repo and set up the first admin |
+| `gitsafe member add NAME --sign HEX --enc age1...` | Add a person to the access list |
+| `gitsafe member revoke NAME` | Remove a person (then run `rotate`) |
+| `gitsafe grant SUBJECT VERB RESOURCE` | Give `read`/`write`/`admin` on a branch (or branch pattern) |
+| `gitsafe revoke SUBJECT VERB RESOURCE` | Take away a matching grant |
+| `gitsafe rotate` | Re-encrypt all secret files to the current set of allowed readers |
+| `gitsafe trust [--fingerprint HEX] [--force]` | Confirm you trust this repo's access list (do this once after cloning) |
+| `gitsafe access RESOURCE` | Show who can decrypt a branch's secrets |
+| `gitsafe whoami` | Show your identity and what you have access to |
+| `gitsafe policy show` | Print the current access list |
+| `gitsafe policy verify` | Check the access list is genuine + show its fingerprint and trust status |
+| `gitsafe clean` / `smudge` | The encrypt/decrypt steps git runs for you (you don't call these by hand) |
 
-`RESOURCE` is a ref glob; a bare branch name is shorthand for `refs/heads/<name>`. Verbs form a hierarchy: `admin > force > write > read`.
+`RESOURCE` is a branch name or pattern; a bare name like `staging` means `refs/heads/staging`. Access levels go in order: `admin > force > write > read` (a higher level includes the ones below it).
 
 ## How it works
 
-Files matching the marks in `.gitattributes` (`*.env`, `*.pem`, `secrets/**`, …) get the `gitsafe` filter. On `git add`, the **clean** filter resolves the current branch, asks the signed policy for that branch's reader set, and encrypts the file with [age](https://age-encryption.org) to those recipients — git stores the ciphertext. On checkout, the **smudge** filter decrypts for an authorized identity, or writes a locked placeholder for everyone else (never failing the checkout).
+You mark which files are secret in `.gitattributes` (by default: `*.env`, `*.pem`, `secrets/**`, …). From then on, git runs gitsafe automatically:
 
-The policy — keyring, grants, branch→reader rules — lives as an ed25519-signed object chain committed under `.gitsafe/policy/` and verifies offline with nothing but the repo. Private keys live in `~/.config/gitsafe/` and never touch the repo.
+- **On `git add`** — gitsafe looks at your current branch, finds who's allowed to read it, and encrypts the file to exactly those people using [age](https://age-encryption.org). Git stores the encrypted version.
+- **On checkout** — if you're allowed, gitsafe decrypts the file for you. If you're not, you get a plain "locked" placeholder instead of the secret. Either way your checkout never breaks.
 
-Three correctness/security properties worth knowing:
+The access list (members, grants, branch rules) is stored in the repo under `.gitsafe/policy/` as a **signed, tamper-evident file**. It travels on a normal `git push` and can be verified offline with just the repo. Your private keys stay in `~/.config/gitsafe/` and never touch the repo.
 
-- **Verified before trusted.** Before the clean filter uses any recipient the policy names, it verifies the whole ed25519 chain *and* that its root matches the fingerprint this clone pinned with `gitsafe trust`. A poisoned policy (a tampered or wholesale-replaced chain merged into the repo) is refused rather than used to redirect a secret's encryption to an attacker's key.
-- **Deterministic re-staging.** age output is randomized, which would make `git status` think every secret is always modified. The clean filter recognizes an unchanged secret with an unchanged reader set and re-emits the stored ciphertext byte-for-byte, so status stays clean.
-- **Placeholder safety.** A locked user sees a placeholder, not the secret. If they re-stage it, the clean filter detects the placeholder and re-emits the stored ciphertext rather than encrypting the placeholder over the real secret — so a non-reader can never destroy data they can't see.
+Three details worth knowing:
 
-## Security model & threat boundaries
+- **Checked before trusted.** Before encrypting, gitsafe verifies the access list is genuine *and* matches the fingerprint you pinned with `gitsafe trust`. So a tampered or swapped-out access list can't trick you into encrypting a secret to an attacker's key — gitsafe refuses instead.
+- **No noisy diffs.** Encryption normally produces different bytes every time, which would make git think your secrets changed on every save. gitsafe notices when a secret and its readers are unchanged and reuses the existing encrypted bytes, so `git status` stays clean.
+- **Locked-out users can't break things.** Someone without access sees a placeholder, not the secret. If they accidentally re-stage that file, gitsafe detects the placeholder and keeps the real encrypted secret — so they can't overwrite data they were never able to see.
 
-- **Private keys** live in `~/.config/gitsafe/`, never in the repo. The policy carries only public keys.
-- **Trust anchor:** the policy root is self-signed; each clone pins the root's public key locally (`.git/gitsafe/root`, TOFU). Verify the fingerprint out-of-band on first trust — `gitsafe policy verify` prints it and the pin status.
-- **What an attacker who controls repo *contents* cannot do:** make you encrypt a new secret to their key. Tampering with `.gitsafe/policy/` either breaks chain verification or fails the root-pin check, and the clean filter refuses.
-- **What is NOT in scope:** an attacker with write access to your local `.git/` (game over for any tool), and **read-after-revocation** — see below.
-- **Revocation is forward-only.** `member revoke` + `rotate` re-encrypts *future* blobs without the revoked reader. It does **not** retroactively protect secrets already in git history: a revoked member who kept an old clone (or the packfiles) can still decrypt the ciphertext that was encrypted to them. **Treat any secret a revoked member could read as compromised and rotate the secret value itself**, exactly as you would after any key exposure. This is inherent to encryption-at-rest in an append-only history, not specific to gitsafe.
+## Is it safe?
 
-## Limitations (MVP)
+- **Private keys** stay in `~/.config/gitsafe/`, never in the repo. The repo only ever holds *public* keys.
+- **Trust is confirmed once, on purpose.** The access list is self-signed; each clone pins its fingerprint locally (`.git/gitsafe/root`). Check the fingerprint the first time with `gitsafe policy verify`.
+- **What an attacker who edits the repo's contents *can't* do:** trick you into encrypting a new secret to their key. Tampering with the access list breaks verification or fails the fingerprint check, and gitsafe refuses to encrypt.
+- **What gitsafe does *not* protect against:**
+  - Someone who can write to your local `.git/` folder — at that point any tool on your machine is compromised.
+  - **Reading old secrets after you remove someone.** This one matters: when you revoke someone and rotate, *future* secrets exclude them — but they may have kept an old copy of the repo, and git history still holds the version that *was* encrypted to them. So **treat any secret a removed person could have seen as compromised, and change the actual secret value** (rotate the real password/key), just like you would after any leak. This is true of any "encrypted files in git history" tool, not just gitsafe.
 
-- **No ciphertext merge driver.** Two branches editing the same secret produce conflicting age blobs git can't 3-way merge; resolve by decrypting, merging, and re-staging. A merge driver is future work.
-- **Branch must be unambiguous at clean time.** On a detached HEAD / mid-rebase the clean filter refuses rather than guess recipients. Commit secrets from a normal branch checkout.
-- **Local enforcement of *reads* is cryptographic; write/force grants are policy metadata**, not server-side push enforcement (gitsafe is an overlay, not a git server).
-- Cut from the MVP: groups beyond read/write, whole-branch encryption, a hosted policy directory, and non-age backends (KMS/PGP).
+## Limitations (v0.1)
+
+- **No automatic merge of encrypted files.** If two branches change the same secret, git can't auto-merge the encrypted blobs — decrypt, merge, and re-stage by hand.
+- **Your branch must be clear when adding secrets.** During a detached checkout or mid-rebase, gitsafe refuses (it can't tell which branch's readers to use). Add secrets from a normal branch.
+- **Read protection is real encryption; write/admin levels are policy, not server enforcement.** gitsafe is a tool layered on git, not a git server — it can't block a push, only record who's allowed.
+- Not in v0.1: groups, encrypting a whole branch's files (not just marked ones), a hosted access-list directory, and key backends other than age (KMS/PGP).
 
 ## Development
 
 ```bash
 make build   # build ./gitsafe
-make test    # unit + real-git end-to-end tests
+make test    # unit tests + real-git end-to-end tests
 make e2e     # just the end-to-end test, verbose
 make lint    # go vet
 go test -race ./...                                          # race detector
-go test ./internal/format -run xxx -fuzz FuzzParse          # fuzz the envelope parser
+go test ./internal/format -run xxx -fuzz FuzzParse          # fuzz the parser
 ```
 
 ## How it's built
 
-A single static Go binary on top of [age](https://age-encryption.org) and `crypto/ed25519`. The engine is small and focused: branch-derived recipients, a portable ed25519-signed policy chain, and age encryption, wired into git through clean/smudge filters. No database, no daemon, no server. See [`docs/design.md`](docs/design.md) for the architecture.
+One small static Go binary built on [age](https://age-encryption.org) (encryption) and `crypto/ed25519` (signing). The core idea is tiny: readers come from the branch, the access list is a signed file in the repo, and files are encrypted with age — all wired into git through its built-in filters. No database, no daemon, no server. See [`docs/design.md`](docs/design.md) for the architecture.
