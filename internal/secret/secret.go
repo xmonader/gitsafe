@@ -1,6 +1,6 @@
 // Package secret provides end-to-end encryption of marked files: age
 // multi-recipient encryption, decryption, and glob-based path classification.
-// Ported from Haven, unchanged — this is the encryption primitive.
+// This is gitsafe's encryption primitive.
 package secret
 
 import (

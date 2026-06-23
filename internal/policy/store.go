@@ -12,7 +12,7 @@ import (
 )
 
 // Store persists the signed policy chain as plain files committed in the repo
-// under .gitsafe/policy/. This replaces Haven's SQLite object store: git is the
+// under .gitsafe/policy/. There is no database — git is the storage and
 // distribution mechanism, so the chain travels on a normal push and verifies
 // offline with nothing but these files.
 //

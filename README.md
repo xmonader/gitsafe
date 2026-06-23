@@ -142,6 +142,6 @@ go test -race ./...                                          # race detector
 go test ./internal/format -run xxx -fuzz FuzzParse          # fuzz the envelope parser
 ```
 
-## Heritage
+## How it's built
 
-The encryption + signed-policy engine is lifted from [Haven](../haven), a from-scratch VCS that proved the model (recipients = branch readers, portable ed25519 policy chain, age encryption). gitsafe is that engine **repositioned as a git overlay** — keeping the valuable idea, discarding the unwinnable "replace git" framing. See [`docs/design.md`](docs/design.md) for what was reused vs rebuilt.
+A single static Go binary on top of [age](https://age-encryption.org) and `crypto/ed25519`. The engine is small and focused: branch-derived recipients, a portable ed25519-signed policy chain, and age encryption, wired into git through clean/smudge filters. No database, no daemon, no server. See [`docs/design.md`](docs/design.md) for the architecture.

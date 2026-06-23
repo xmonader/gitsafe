@@ -2,8 +2,8 @@
 // and signed capability grants, chained version-over-version so anyone can
 // verify it offline but nobody can forge it. policy.Eval is the single access
 // decision; policy.Recipients turns "who can read this branch" into the age
-// recipient set a secret is encrypted to. Ported from Haven (the crown jewel),
-// unchanged except that resources are git refs (refs/heads/<branch>).
+// recipient set a secret is encrypted to. Resources are git refs
+// (e.g. refs/heads/<branch>).
 package policy
 
 import (

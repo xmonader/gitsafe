@@ -1,6 +1,6 @@
 # gitsafe — Strategy & Go-To-Market
 
-This is the plan distilled from the Haven post-mortem: Haven is well-engineered but mispositioned as a git *replacement* (an unwinnable, network-effect-locked market). gitsafe keeps Haven's one defensible idea and repositions it as a **git-native overlay**, which trades the unwinnable VCS war for a winnable plugin niche on top of git's distribution.
+The positioning lesson: a from-scratch VCS is well-engineered but mispositioned — replacing git is an unwinnable, network-effect-locked market. gitsafe keeps the one defensible idea (recipients = branch readers, a portable signed policy) and ships it as a **git-native overlay**, trading the unwinnable VCS war for a winnable plugin niche on top of git's distribution.
 
 ## The gating decision (already made): git-native, not a VCS
 
@@ -34,7 +34,7 @@ Cheapest possible go/no-go before writing more code.
 
 - **Landing page** with the one-line pitch + an asciinema demo: `mark .env → git add → it's ciphertext → teammate with read access decrypts automatically → attacker with the repo gets garbage`. Email capture.
 - **15–20 customer-discovery calls** with the real user (platform / DevSecOps engineers at 20–500-person companies). Ask what they use today and what they hate. **Do not pitch — listen.**
-- **Write up the engineering as you go** (the Haven merge engine, signed policy chain, wire protocol). These posts are both launch material and the career deliverable.
+- **Write up the engineering as you go** (the signed policy chain, branch-derived recipients, the git-overlay filters). These posts are both launch material and the career deliverable.
 
 **Kill criteria (decide now):** if after 20 calls nobody describes the secrets-in-git-with-ACL problem as painful *and* current tools as inadequate, stop and bank the career win. Don't romance a dead thesis.
 
@@ -74,7 +74,7 @@ The two filled columns no one else has — **branch-scoped access** and **portab
 
 ## First two weeks (concrete)
 
-1. **Commit to the pivot** (or consciously choose Haven-as-portfolio-only and skip to the career write-ups).
+1. **Commit to the overlay positioning** (or consciously choose portfolio-only and skip to the career write-ups).
 2. Stand up the landing page + record the asciinema demo (one day).
 3. Book the first 5 discovery calls; ship the first engineering deep-dive post.
 4. **Prototype the git clean/smudge integration against a real repo** to prove the overlay is technically sound — the riskiest technical assumption; de-risk it first (see `docs/design.md`).

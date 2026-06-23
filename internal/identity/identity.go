@@ -1,7 +1,7 @@
 // Package identity manages a user's keypair: an age (X25519) key for receiving
 // encrypted secrets and an Ed25519 key for signing policy. The private material
 // lives outside any repository (in ~/.config/gitsafe/identity by default) and
-// never touches the repo. Ported from Haven.
+// never touches the repo.
 package identity
 
 import (
