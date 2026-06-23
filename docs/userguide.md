@@ -84,10 +84,13 @@ once — by design: a repository cannot vouch for its own authenticity.
 
 ## Identity
 
-Your identity is a JSON file containing two private keys. Manage it with:
+Your identity holds two private keys (age X25519 for decryption, Ed25519 for
+signing policy). Manage it with:
 
-- `gitsafe key gen` — generate it (refuses to overwrite an existing one).
+- `gitsafe key gen [--passphrase]` — generate it (refuses to overwrite). With
+  `--passphrase` the file is encrypted at rest (see below).
 - `gitsafe key show` — print the **public** halves to share with an admin.
+- `gitsafe key lock` — encrypt an existing plaintext identity at rest.
 
 Resolution order for the file path:
 
@@ -97,8 +100,58 @@ Resolution order for the file path:
 3. `~/.config/gitsafe/identity`.
 
 The file is written `0600`. Treat it like an SSH private key: back it up, never
-commit it, and re-issue if exposed. Losing it means you can no longer decrypt
-secrets you were a recipient of (an admin re-adds your new key and rotates).
+commit it, and re-issue if exposed.
+
+### Protecting your key at rest
+
+By default the identity is stored as plaintext JSON (readable by anyone who can
+read the file — a stolen laptop without disk encryption, a synced backup, or
+malware). To protect it, encrypt it with a passphrase:
+
+```bash
+gitsafe key gen --passphrase   # new key, encrypted at rest
+gitsafe key lock               # encrypt an existing key in place
+```
+
+gitsafe auto-detects the format on load. The passphrase is supplied via:
+
+- **`GITSAFE_PASSPHRASE`** — the non-interactive path. The git filters
+  (`clean`/`smudge`/`merge`) have no terminal, so **a passphrase-protected key
+  only works under git if this variable is set** in that environment.
+- an **interactive prompt** on `/dev/tty` for the other commands.
+
+Trade-off: a passphrase truly protects the key on disk, but you must export
+`GITSAFE_PASSPHRASE` (e.g. from your shell profile or a keychain helper) for
+`git add`/`git checkout` to decrypt. If you skip that, a locked key simply
+degrades to placeholders on checkout — your data is safe, just not visible until
+the passphrase is available.
+
+### Key loss & recovery
+
+There is no master key and no escrow by default — this is deliberate (an escrow
+key would be a single point of compromise). If you lose your identity file with
+no backup, you cannot decrypt secrets you were a recipient of, and nobody can
+recover it *for* you. Recovery is re-enrolment, not decryption:
+
+1. **Generate a fresh identity:** `gitsafe key gen` (optionally `--passphrase`),
+   then `gitsafe key show`.
+2. **An admin re-adds you with the new keys:**
+   `gitsafe member add <you> --sign <hex> --enc <age1...> --update` (the
+   `--update` flag is required to replace an existing member's keys), then
+   commits the policy change.
+3. **An admin rotates** so current secrets are re-encrypted to your new key:
+   `gitsafe rotate` → `git add .gitsafe <secrets> && git commit`.
+4. After a pull you can read **current** secrets again. Note you still cannot
+   read *historical* blobs that were encrypted only to your lost key — and a
+   secret your lost key could read should be treated as exposed and its **value
+   rotated** if the key itself may be compromised (lost ≠ destroyed).
+
+**To make loss a non-event, back the key up:** copy `~/.config/gitsafe/identity`
+to secure offline storage (a password manager, an encrypted USB key). Because
+the file is small, a passphrase-encrypted copy is safe to store in more places.
+For teams, ensure there is always **more than one admin** so a single lost admin
+key cannot strand the policy (admins are the only ones who can re-enrol members
+and rotate).
 
 A member's **name** (set via `gitsafe init --user NAME`, stored as
 `gitsafe.user`) must match the name they were added under in the keyring *and*
@@ -296,12 +349,19 @@ keys to an admin, who runs `member add <you>` (updating your entry) and
 
 Global: `gitsafe version`, `gitsafe help`.
 
-### `gitsafe key gen`
+### `gitsafe key gen [--passphrase]`
 Generate your identity at the resolved path. Refuses to overwrite. Prints your
-public keys and a ready-to-paste `member add` line.
+public keys and a ready-to-paste `member add` line. With `--passphrase`, the
+identity is encrypted at rest (prompts for a passphrase, confirmed twice).
 
 ### `gitsafe key show`
 Print the public keys of your existing identity.
+
+### `gitsafe key lock`
+Encrypt an existing plaintext identity at rest with a passphrase (prompted).
+Refuses if it is already encrypted. Afterwards the git filters need
+`GITSAFE_PASSPHRASE` set in their environment to decrypt. See
+[Protecting your key at rest](#protecting-your-key-at-rest).
 
 ### `gitsafe init [--user NAME]`
 Set up gitsafe in the current repo:
@@ -366,6 +426,17 @@ fingerprint, and trust-pin status.
 ### `gitsafe clean PATH` / `gitsafe smudge PATH`
 The git filters. You don't call these by hand — git invokes them. Documented in
 [The git filters](#the-git-filters).
+
+### `gitsafe merge %O %A %B %P`
+The git **merge driver** for encrypted files, configured automatically by
+`init`. When two branches change the same marked secret, git can't 3-way merge
+the opaque ciphertext, so gitsafe decrypts ours/base/theirs, runs a normal
+3-way merge on the plaintexts, and re-encrypts the result to the current
+branch's readers. A genuine content conflict is surfaced as usual — the conflict
+markers live inside the re-encrypted blob, so a reader sees them on checkout and
+resolves by editing and re-staging. You don't call this by hand. You must be a
+reader of the secret to merge it; a non-reader's merge is refused rather than
+silently mangling data.
 
 ---
 
