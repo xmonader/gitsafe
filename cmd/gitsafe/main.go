@@ -41,6 +41,7 @@ Usage:
 
   gitsafe clean PATH              (filter) encrypt stdin -> stdout
   gitsafe smudge PATH             (filter) decrypt stdin -> stdout
+  gitsafe merge O A B [P]         (merge driver) 3-way merge of encrypted files
 
 RESOURCE is a ref glob; a bare branch name is treated as refs/heads/<name>.
 `
@@ -66,6 +67,8 @@ func main() {
 		err = cmdClean(args)
 	case "smudge":
 		err = cmdSmudge(args)
+	case "merge":
+		err = cmdMerge(args)
 	case "member":
 		err = cmdMember(args)
 	case "grant":

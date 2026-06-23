@@ -321,6 +321,112 @@ func TestWorktree(t *testing.T) {
 	}
 }
 
+// TestMergeDriver proves the encrypted-file merge driver: two branches editing
+// the same secret in non-conflicting ways merge cleanly into correct decrypted
+// plaintext, and a real content conflict is surfaced (not silently lost).
+func TestMergeDriver(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	binDir := t.TempDir()
+	bin := filepath.Join(binDir, "gitsafe")
+	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
+		t.Fatalf("build gitsafe: %v\n%s", err, out)
+	}
+
+	repo := t.TempDir()
+	id := filepath.Join(t.TempDir(), "id")
+	environ := append(append([]string{}, os.Environ()...),
+		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"GITSAFE_IDENTITY="+id,
+		"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@e",
+		"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@e",
+	)
+	run := func(t *testing.T, name string, args ...string) string {
+		t.Helper()
+		cmd := exec.Command(name, args...)
+		cmd.Dir = repo
+		cmd.Env = environ
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("%s %s: %v\n%s", name, strings.Join(args, " "), err, out)
+		}
+		return string(out)
+	}
+	tryRun := func(name string, args ...string) (string, error) {
+		cmd := exec.Command(name, args...)
+		cmd.Dir = repo
+		cmd.Env = environ
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
+	writeEnv := func(s string) {
+		if err := os.WriteFile(filepath.Join(repo, ".env"), []byte(s), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Base secret on main.
+	run(t, "git", "init", "-b", "main")
+	run(t, bin, "key", "gen")
+	run(t, bin, "init", "--user", "alice")
+	writeEnv("A=1\nB=2\nC=3\n")
+	run(t, "git", "add", ".gitsafe", ".gitattributes", ".env")
+	run(t, "git", "commit", "-m", "base secret")
+
+	// feature changes the first line.
+	run(t, "git", "checkout", "-b", "feature")
+	writeEnv("A=10\nB=2\nC=3\n")
+	run(t, "git", "add", ".env")
+	run(t, "git", "commit", "-m", "feature: A=10")
+
+	// main changes the last line (non-conflicting with feature).
+	run(t, "git", "checkout", "main")
+	writeEnv("A=1\nB=2\nC=30\n")
+	run(t, "git", "add", ".env")
+	run(t, "git", "commit", "-m", "main: C=30")
+
+	// Merge feature -> main: the driver must produce a clean, correct merge.
+	run(t, "git", "merge", "feature", "-m", "merge feature")
+
+	// The merged blob in the index must be ciphertext (no plaintext leak).
+	stored := run(t, "git", "cat-file", "blob", ":.env")
+	if !strings.HasPrefix(stored, "\x00gitsafe\x00") {
+		t.Fatalf("merged blob is not a gitsafe envelope: %q", stored[:min(20, len(stored))])
+	}
+	if strings.Contains(stored, "A=10") || strings.Contains(stored, "C=30") {
+		t.Fatal("merged blob leaks plaintext")
+	}
+
+	// Re-checkout to force smudge; the decrypted merge must carry both changes.
+	os.Remove(filepath.Join(repo, ".env"))
+	run(t, "git", "checkout", "--", ".env")
+	got, _ := os.ReadFile(filepath.Join(repo, ".env"))
+	if string(got) != "A=10\nB=2\nC=30\n" {
+		t.Fatalf("merged plaintext wrong, got %q", got)
+	}
+
+	// --- Conflict path: both branches change the same line differently. ---
+	run(t, "git", "checkout", "-b", "feature2")
+	writeEnv("A=111\nB=2\nC=30\n")
+	run(t, "git", "add", ".env")
+	run(t, "git", "commit", "-m", "feature2: A=111")
+
+	run(t, "git", "checkout", "main")
+	writeEnv("A=222\nB=2\nC=30\n")
+	run(t, "git", "add", ".env")
+	run(t, "git", "commit", "-m", "main: A=222")
+
+	out, err := tryRun("git", "merge", "feature2", "-m", "merge feature2")
+	if err == nil {
+		t.Fatalf("a conflicting merge must fail, but succeeded:\n%s", out)
+	}
+	st, _ := tryRun("git", "status", "--porcelain")
+	if !strings.Contains(st, "UU .env") && !strings.Contains(st, "AA .env") {
+		t.Fatalf("conflicting merge must leave .env unmerged, status:\n%s", st)
+	}
+}
+
 type pubKeys struct{ sign, enc string }
 
 // gitsafeKeyGenPub generates an identity at idPath and returns its public keys

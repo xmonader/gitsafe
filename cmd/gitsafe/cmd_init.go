@@ -56,6 +56,8 @@ func cmdInit(args []string) error {
 		"filter.gitsafe.clean":    "gitsafe clean %f",
 		"filter.gitsafe.smudge":   "gitsafe smudge %f",
 		"filter.gitsafe.required": "true",
+		"merge.gitsafe.name":      "gitsafe encrypted-file 3-way merge",
+		"merge.gitsafe.driver":    "gitsafe merge %O %A %B %P",
 		"gitsafe.user":            user,
 	} {
 		if err := gitx.ConfigSet(k, v); err != nil {
@@ -112,7 +114,7 @@ gitsafe is ready. Next steps:
 func attrLines() []string {
 	lines := []string{"# gitsafe: encrypt marked secrets"}
 	for _, m := range policy.DefaultSecretPaths() {
-		lines = append(lines, m+" filter=gitsafe")
+		lines = append(lines, m+" filter=gitsafe merge=gitsafe")
 	}
 	lines = append(lines, ".gitsafe/** -filter")
 	return lines
