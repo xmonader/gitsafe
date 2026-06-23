@@ -1,7 +1,7 @@
 BIN := gitsafe
 PKG := ./...
 
-.PHONY: build test lint clean install
+.PHONY: build test lint clean install snapshot release-check
 
 build:
 	go build -o $(BIN) ./cmd/gitsafe
@@ -20,3 +20,11 @@ clean:
 
 install: build
 	install -m 0755 $(BIN) $(DESTDIR)/usr/local/bin/$(BIN)
+
+# Validate the GoReleaser config.
+release-check:
+	goreleaser check
+
+# Build a local snapshot release into ./dist (no publish).
+snapshot:
+	goreleaser release --snapshot --clean

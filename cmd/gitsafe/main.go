@@ -12,9 +12,10 @@ import (
 	"gitsafe/internal/policy"
 )
 
-const version = "0.1.0"
+// version is overridden at release time via -ldflags "-X main.version=...".
+var version = "0.1.0-dev"
 
-const usage = `gitsafe ` + version + ` — git-crypt with access control
+var usage = `gitsafe ` + version + ` — git-crypt with access control
 
 Usage:
   gitsafe init [--user NAME]      Wire up filters, identity, and policy in this repo
