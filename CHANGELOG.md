@@ -20,6 +20,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - Release artifacts are now signed with cosign (keyless) and ship with a syft
   SBOM.
 - Key-loss / recovery runbook in the User Guide.
+- `gitsafe onboard NAME BRANCH` — add a member, grant read, and rotate in one
+  signed step.
+- Named groups in the CLI: `gitsafe group add|remove|list` (the policy engine
+  already expanded groups; now they're manageable from the command line).
+- `gitsafe audit [RESOURCE]` — show how a branch's readers changed across policy
+  versions, or the full grant history.
+- `gitsafe check` — fail if a marked secret is staged as plaintext; documented as
+  a pre-commit hook, with a CI trust-pinning guide in the User Guide.
 
 ## [0.1.0] — unreleased
 

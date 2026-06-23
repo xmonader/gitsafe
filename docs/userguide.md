@@ -17,6 +17,7 @@ see the [README](../README.md).
 - [The trust model](#the-trust-model)
 - [Rotation & key lifecycle](#rotation--key-lifecycle)
 - [Command reference](#command-reference)
+- [Using gitsafe in CI and as a pre-commit hook](#using-gitsafe-in-ci-and-as-a-pre-commit-hook)
 - [Security model & threat boundaries](#security-model--threat-boundaries)
 - [Troubleshooting & FAQ](#troubleshooting--faq)
 
@@ -385,6 +386,29 @@ recipient. Signs a new policy version. Requires you to be an admin.
 Mark a member `revoked`. They're excluded from recipients after the next
 `rotate`. Requires admin.
 
+### `gitsafe onboard NAME BRANCH --sign HEX --enc age1... [--update]`
+The one-shot teammate flow: adds (or `--update`s) the member **and** grants them
+`read` on `BRANCH` in a single signed policy version, then runs `rotate` so the
+branch's secrets are immediately re-encrypted to include them. Equivalent to
+`member add` + `grant … read BRANCH` + `rotate`, but atomic and harder to leave
+half-done. Commit `.gitsafe` and the re-encrypted secrets afterward. Requires
+admin.
+
+### `gitsafe group add GROUP NAME [NAME...]`
+Add members to a named group, creating it if absent. A group can be the subject
+of a grant (`gitsafe grant devs read staging`), so you manage access by role
+instead of per person; groups are expanded to their members wherever access is
+evaluated. Members must already exist in the keyring, and a group may not share a
+name with a member. Requires admin. Run `rotate` if the group holds read access.
+
+### `gitsafe group remove GROUP [NAME...]`
+Remove the named members from a group, or delete the whole group when no names
+are given. A group left empty is deleted. Requires admin. Run `rotate` if this
+removed read access.
+
+### `gitsafe group list`
+Print the defined groups and their members.
+
 ### `gitsafe grant SUBJECT VERB RESOURCE`
 Add a capability (`read`/`write`/`force`/`grant`/`admin`) for `SUBJECT` (a member
 name, or `*` for all members) on `RESOURCE` (a ref glob; bare branch name
@@ -410,6 +434,19 @@ Pin this clone to the policy root.
 Resolve who can decrypt secrets on a branch/ref: prints the active reader names
 (expanding groups, admins, and public) and the age-recipient count. The core
 audit query.
+
+### `gitsafe audit [RESOURCE]`
+Show how access evolved across the signed policy chain — the "who could read
+what, and when did it change" query for compliance. With a `RESOURCE` it prints
+the reader set of that branch at every version, flagging the versions where it
+changed. Without one it prints the grant history version-by-version.
+
+### `gitsafe check`
+Inspect the staged tree and **fail** if any gitsafe-marked file is about to be
+committed as plaintext — the footgun that happens when the filters aren't active
+(a fresh clone before `gitsafe init`, an unpinned clone, or a misconfigured CI
+runner). Intended as a pre-commit hook (see
+[Using gitsafe in CI](#using-gitsafe-in-ci-and-as-a-pre-commit-hook)).
 
 ### `gitsafe whoami`
 Print your configured user name, local identity public keys, your keyring status,
@@ -437,6 +474,56 @@ markers live inside the re-encrypted blob, so a reader sees them on checkout and
 resolves by editing and re-staging. You don't call this by hand. You must be a
 reader of the secret to merge it; a non-reader's merge is refused rather than
 silently mangling data.
+
+---
+
+## Using gitsafe in CI and as a pre-commit hook
+
+### Pre-commit hook (catch plaintext leaks locally)
+
+The biggest operational footgun is committing a marked secret **as plaintext**
+because the filters weren't active (a fresh clone before `gitsafe init`, or an
+unpinned clone). `gitsafe check` fails when that's about to happen. Wire it as a
+pre-commit hook so a mistake can't reach a commit:
+
+```bash
+cat > .git/hooks/pre-commit <<'EOF'
+#!/bin/sh
+exec gitsafe check
+EOF
+chmod +x .git/hooks/pre-commit
+```
+
+`.git/hooks/` is per-clone and not committed. For a shared hook, point git at a
+tracked directory once: `git config core.hooksPath .githooks` and commit a
+`.githooks/pre-commit` running `gitsafe check`.
+
+### CI: pin trust deliberately
+
+A CI runner is just another clone, so the same TOFU rule applies: it will refuse
+to encrypt against a policy it hasn't been told to trust. Don't let CI blindly
+trust — pin the **known** fingerprint so a tampered policy fails the build
+instead of being silently accepted. A typical job:
+
+```bash
+# CI environment provides the runner's identity and (if encrypted) its passphrase
+export GITSAFE_IDENTITY="$RUNNER_KEY_FILE"
+export GITSAFE_PASSPHRASE="$RUNNER_KEY_PASSPHRASE"   # only if the key is locked
+
+gitsafe init --user ci-runner
+gitsafe trust --fingerprint "$EXPECTED_ROOT_FINGERPRINT"   # asserts, doesn't TOFU
+git checkout -- .                                          # decrypt what CI may read
+gitsafe check                                              # belt and braces
+```
+
+`gitsafe trust --fingerprint HEX` is the non-interactive, safe form: it pins only
+if the policy root actually equals `HEX`, and fails otherwise — so a CI run can
+never be tricked into trusting a swapped-out policy. Get the expected fingerprint
+from `gitsafe policy verify` on a trusted machine and store it as a CI variable.
+
+If the CI runner is only a **reader** (decrypts secrets to use them) it never
+needs to encrypt, so trust is only needed for the `checkout`/decrypt path. If it
+**writes** secrets back, pin as above before any `git add`.
 
 ---
 

@@ -98,11 +98,15 @@ Until you run `gitsafe trust`, gitsafe **won't encrypt anything**. This is the s
 | `gitsafe init [--user NAME]` | Turn gitsafe on for this repo and set up the first admin |
 | `gitsafe member add NAME --sign HEX --enc age1...` | Add a person to the access list |
 | `gitsafe member revoke NAME` | Remove a person (then run `rotate`) |
+| `gitsafe onboard NAME BRANCH --sign HEX --enc age1...` | Add a person, grant them read on a branch, and rotate — in one step |
+| `gitsafe group add\|remove\|list ...` | Manage named groups so you can grant access by role |
 | `gitsafe grant SUBJECT VERB RESOURCE` | Give `read`/`write`/`admin` on a branch (or branch pattern) |
 | `gitsafe revoke SUBJECT VERB RESOURCE` | Take away a matching grant |
 | `gitsafe rotate` | Re-encrypt all secret files to the current set of allowed readers |
 | `gitsafe trust [--fingerprint HEX] [--force]` | Confirm you trust this repo's access list (do this once after cloning) |
 | `gitsafe access RESOURCE` | Show who can decrypt a branch's secrets |
+| `gitsafe audit [RESOURCE]` | Show how access changed across policy versions (or the full grant history) |
+| `gitsafe check` | Fail if a marked secret is staged as plaintext — use as a pre-commit hook |
 | `gitsafe whoami` | Show your identity and what you have access to |
 | `gitsafe policy show` | Print the current access list |
 | `gitsafe policy verify` | Check the access list is genuine + show its fingerprint and trust status |
