@@ -26,7 +26,7 @@ type Member struct {
 // Grant is a capability. Verbs: read, write, force, grant, admin.
 type Grant struct {
 	ID       string `json:"id"`
-	Subject  string `json:"subject"`  // actor name, group name, or "*"
+	Subject  string `json:"subject"` // actor name, group name, or "*"
 	Verb     string `json:"verb"`
 	Resource string `json:"resource"` // ref glob, e.g. refs/heads/**
 }

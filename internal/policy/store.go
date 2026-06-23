@@ -32,8 +32,8 @@ func NewStore(repoRoot string) *Store {
 	return &Store{dir: filepath.Join(repoRoot, Dir)}
 }
 
-func (s *Store) headPath() string    { return filepath.Join(s.dir, "HEAD") }
-func (s *Store) objectsDir() string  { return filepath.Join(s.dir, "objects") }
+func (s *Store) headPath() string   { return filepath.Join(s.dir, "HEAD") }
+func (s *Store) objectsDir() string { return filepath.Join(s.dir, "objects") }
 func (s *Store) objPath(h string) string {
 	return filepath.Join(s.objectsDir(), h+".json")
 }
