@@ -12,6 +12,10 @@ import (
 	"gitsafe/internal/policy"
 )
 
+// filterCmds run non-interactively under git; they must not prompt on a tty and
+// rely on GITSAFE_PASSPHRASE to unlock an encrypted identity.
+var filterCmds = map[string]bool{"clean": true, "smudge": true, "merge": true}
+
 // version is overridden at release time via -ldflags "-X main.version=...".
 var version = "0.1.0-dev"
 
@@ -19,8 +23,9 @@ var usage = `gitsafe ` + version + ` — git-crypt with access control
 
 Usage:
   gitsafe init [--user NAME]      Wire up filters, identity, and policy in this repo
-  gitsafe key gen                 Generate your private identity (~/.config/gitsafe)
+  gitsafe key gen [--passphrase]  Generate your private identity (~/.config/gitsafe)
   gitsafe key show                Print your public keys (give these to an admin)
+  gitsafe key lock                Encrypt an existing identity at rest with a passphrase
 
   gitsafe member add NAME --sign HEX --enc age1...   Add a member to the keyring
   gitsafe member revoke NAME                         Revoke a member (then rotate)
@@ -46,6 +51,11 @@ func main() {
 		os.Exit(2)
 	}
 	args := os.Args[2:]
+	// Interactive commands may prompt for the identity passphrase on the
+	// terminal; the git filters must not (no usable tty), so they use the env.
+	if !filterCmds[os.Args[1]] {
+		identity.Prompter = promptPassphrase
+	}
 	var err error
 	switch os.Args[1] {
 	case "init":
