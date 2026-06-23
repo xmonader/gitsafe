@@ -231,6 +231,21 @@ func (p *Policy) isGroup(name string) bool {
 	return ok
 }
 
+// HasUsableAdmin reports whether at least one active member with a signing key
+// can administer the policy. It is the invariant that keeps the chain from being
+// bricked: every version must retain someone who can sign the next one.
+func (p *Policy) HasUsableAdmin() bool {
+	for name, m := range p.Keyring {
+		if m.Status != "active" || m.Sign == "" {
+			continue
+		}
+		if p.Eval(name, Admin, PolicyResource) {
+			return true
+		}
+	}
+	return false
+}
+
 // verbSatisfies reports whether holding verb `have` authorizes `need`.
 // admin > force > write > read; admin also implies grant. grant implies grant.
 func verbSatisfies(have, need string) bool {

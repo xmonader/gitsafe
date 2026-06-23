@@ -214,6 +214,64 @@ func TestMutateRefusesWhenLocked(t *testing.T) {
 	}
 }
 
+func TestMutateRefusesToBrickPolicy(t *testing.T) {
+	s := newStore(t)
+	alice := newActor(t, "alice")
+	Bootstrap(s, alice.name, alice.signPub, alice.enc, alice.priv)
+
+	// Revoking the only admin would leave no one able to sign the next version.
+	_, err := s.Mutate(alice.name, alice.priv, func(p *Policy) error {
+		m := p.Keyring["alice"]
+		m.Status = "revoked"
+		p.Keyring["alice"] = m
+		return nil
+	})
+	if err == nil {
+		t.Fatal("Mutate must refuse to revoke the last usable admin")
+	}
+	// Stripping the only admin's sign key is equally fatal and must be refused.
+	_, err = s.Mutate(alice.name, alice.priv, func(p *Policy) error {
+		m := p.Keyring["alice"]
+		m.Sign = ""
+		p.Keyring["alice"] = m
+		return nil
+	})
+	if err == nil {
+		t.Fatal("Mutate must refuse to strip the last usable admin's sign key")
+	}
+}
+
+func TestReAddReactivatesRevokedMember(t *testing.T) {
+	s := newStore(t)
+	alice := newActor(t, "alice")
+	bob := newActor(t, "bob")
+	Bootstrap(s, alice.name, alice.signPub, alice.enc, alice.priv)
+	s.Mutate(alice.name, alice.priv, func(p *Policy) error {
+		p.Keyring["bob"] = Member{Enc: bob.enc, Status: "active"}
+		p.Grants = append(p.Grants, Grant{ID: "g", Subject: "bob", Verb: Read, Resource: "refs/heads/main"})
+		return nil
+	})
+	s.Mutate(alice.name, alice.priv, func(p *Policy) error {
+		m := p.Keyring["bob"]
+		m.Status = "revoked"
+		p.Keyring["bob"] = m
+		return nil
+	})
+	// Re-adding bob (the un-revoke path) must restore him to active.
+	s.Mutate(alice.name, alice.priv, func(p *Policy) error {
+		m := Member{Enc: bob.enc, Status: "active"}
+		p.Keyring["bob"] = m
+		return nil
+	})
+	p, _ := s.Load()
+	if p.Keyring["bob"].Status != "active" {
+		t.Fatalf("re-added member status = %q, want active", p.Keyring["bob"].Status)
+	}
+	if r, _ := RecipientsFor(s, "refs/heads/main"); !hasStr(r, bob.enc) {
+		t.Fatal("reactivated bob must be a recipient again")
+	}
+}
+
 func TestCorruptObjectDetected(t *testing.T) {
 	s := newStore(t)
 	alice := newActor(t, "alice")

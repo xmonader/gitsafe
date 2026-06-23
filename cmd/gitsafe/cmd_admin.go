@@ -88,15 +88,13 @@ func memberAdd(args []string) error {
 		if exists && !update {
 			return fmt.Errorf("member %q already exists; pass --update to replace their keys (e.g. after a key rotation)", name)
 		}
+		// Re-adding a member always (re-)activates them: 'member add --update' is
+		// the un-revoke path. The existing sign key is preserved when no new one is
+		// supplied, so rotating an admin's enc key alone never strips their ability
+		// to sign.
 		m := policy.Member{Enc: enc, Sign: sign, Status: "active"}
-		if exists {
-			// On update, preserve the existing sign key and status unless a new
-			// sign key is supplied — so updating an admin's enc key alone doesn't
-			// silently strip their ability to sign or un-revoke them.
-			if sign == "" {
-				m.Sign = existing.Sign
-			}
-			m.Status = existing.Status
+		if exists && sign == "" {
+			m.Sign = existing.Sign
 		}
 		p.Keyring[name] = m
 		return nil
@@ -186,6 +184,15 @@ func cmdGrant(args []string) error {
 				return fmt.Errorf("that grant already exists")
 			}
 		}
+		// Admin authority is unusable without a signing key, and handing it out
+		// can mislead operators into thinking the policy has another administrator
+		// when it does not. Refuse for a concrete member who has no sign key.
+		if verb == policy.Admin {
+			if m, ok := p.Keyring[subject]; ok && m.Sign == "" {
+				return fmt.Errorf("%q has no signing key, so admin would be unusable.\n"+
+					"  Have them run 'gitsafe key show', then: gitsafe member add %s --update --sign <hex>", subject, subject)
+			}
+		}
 		p.Grants = append(p.Grants, policy.Grant{ID: id, Subject: subject, Verb: verb, Resource: res})
 		return nil
 	})
@@ -193,16 +200,6 @@ func cmdGrant(args []string) error {
 		return err
 	}
 	fmt.Printf("Granted %s %s on %s.\n", subject, verb, res)
-	// Admin authority is only usable with a signing key. Warn if we just made
-	// someone an admin who has none yet (a read-only member added with --enc only).
-	if verb == policy.Admin {
-		if pol, _ := rc.store.Load(); pol != nil {
-			if m, ok := pol.Keyring[subject]; ok && m.Sign == "" {
-				fmt.Printf("Note: %q has no signing key, so they can't change policy yet.\n"+
-					"  Have them run 'gitsafe key show', then: gitsafe member add %s --update --sign <hex>\n", subject, subject)
-			}
-		}
-	}
 	return nil
 }
 

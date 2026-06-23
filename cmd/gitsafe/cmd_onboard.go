@@ -67,12 +67,11 @@ func cmdOnboard(args []string) error {
 		if exists && !update {
 			return fmt.Errorf("member %q already exists; pass --update to replace their keys", name)
 		}
+		// Onboarding always (re-)activates the member, so it doubles as the
+		// un-revoke path; an existing sign key is preserved when none is supplied.
 		m := policy.Member{Enc: enc, Sign: sign, Status: "active"}
-		if exists {
-			if sign == "" {
-				m.Sign = existing.Sign
-			}
-			m.Status = existing.Status
+		if exists && sign == "" {
+			m.Sign = existing.Sign
 		}
 		p.Keyring[name] = m
 		for _, g := range p.Grants {

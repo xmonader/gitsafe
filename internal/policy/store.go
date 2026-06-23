@@ -9,7 +9,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 )
+
+// lockStaleAfter is how old a lock file may be before lock() treats it as
+// abandoned (a crashed process) and steals it. gitsafe mutations complete in
+// well under a second, so any lock this old is certainly stale.
+const lockStaleAfter = 10 * time.Minute
 
 // Store persists the signed policy chain as plain files committed in the repo
 // under .gitsafe/policy/. There is no database — git is the storage and
@@ -141,15 +147,26 @@ func (s *Store) lock() (func(), error) {
 		return nil, err
 	}
 	lockPath := filepath.Join(s.dir, "lock")
-	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
-	if err != nil {
-		if os.IsExist(err) {
-			return nil, fmt.Errorf("policy is locked by another gitsafe process (%s); retry, or remove the file if stale", lockPath)
+	for attempt := 0; attempt < 2; attempt++ {
+		f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+		if err == nil {
+			fmt.Fprintf(f, "%d\n", os.Getpid())
+			f.Close()
+			return func() { os.Remove(lockPath) }, nil
 		}
-		return nil, err
+		if !os.IsExist(err) {
+			return nil, err
+		}
+		// Lock exists. Steal it only if it is older than the staleness window,
+		// which means the holder crashed without releasing it.
+		fi, statErr := os.Stat(lockPath)
+		if statErr == nil && time.Since(fi.ModTime()) > lockStaleAfter {
+			os.Remove(lockPath)
+			continue // retry the create
+		}
+		return nil, fmt.Errorf("policy is locked by another gitsafe process (%s); retry, or remove the file if stale", lockPath)
 	}
-	f.Close()
-	return func() { os.Remove(lockPath) }, nil
+	return nil, fmt.Errorf("could not acquire policy lock (%s)", lockPath)
 }
 
 // Mutate creates the next signed policy version by applying fn to a copy of the
@@ -177,6 +194,13 @@ func (s *Store) Mutate(signer string, priv ed25519.PrivateKey, fn func(*Policy) 
 	}
 	if err := fn(&next); err != nil {
 		return "", err
+	}
+	// Brick guard: never write a version that no one can sign the successor of.
+	// Bootstrap (cur == nil) is exempt only insofar as fn must establish an admin;
+	// the check below still runs on the resulting v0, so a malformed bootstrap is
+	// rejected too.
+	if !next.HasUsableAdmin() {
+		return "", fmt.Errorf("refusing change: it would leave the policy with no usable admin (an active member that holds admin on %s and has a signing key)", PolicyResource)
 	}
 	next.Sign(signer, priv)
 	if err := next.Verify(cur); err != nil {
