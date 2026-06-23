@@ -577,9 +577,12 @@ Filters weren't active at checkout. `gitsafe init`, `gitsafe trust`, then
 `git checkout -- .` to re-run smudge.
 
 **Can two branches edit the same secret and merge?**
-Not automatically — two branches produce different ciphertext blobs git can't
-3-way merge. Resolve by decrypting both sides, merging the plaintext, and
-re-staging. A merge driver is future work.
+Yes — `gitsafe init` installs a merge driver (`gitsafe merge`) that decrypts both
+sides plus the common ancestor, runs a normal 3-way merge on the plaintext, and
+re-encrypts the result to the current branch's readers. A genuine conflict shows
+up as conflict markers (visible in the decrypted working copy) for you to resolve
+and re-stage. You must be a **reader** of the secret to merge it; a non-reader's
+merge is refused rather than silently mangling data.
 
 **Does committing on a detached HEAD or mid-rebase work?**
 No — the clean filter refuses when it can't unambiguously resolve the branch
