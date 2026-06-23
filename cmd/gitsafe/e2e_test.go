@@ -264,6 +264,63 @@ func TestTrustGate(t *testing.T) {
 	}
 }
 
+// TestWorktree verifies gitsafe works in a linked git worktree: smudge decrypts
+// there, and clean works without re-trusting because the pin is shared via git's
+// common dir. This covers a slice of git's long tail that overlays often break.
+func TestWorktree(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	binDir := t.TempDir()
+	bin := filepath.Join(binDir, "gitsafe")
+	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
+		t.Fatalf("build gitsafe: %v\n%s", err, out)
+	}
+
+	repo := t.TempDir()
+	id := filepath.Join(t.TempDir(), "id")
+	environ := append(append([]string{}, os.Environ()...),
+		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"GITSAFE_IDENTITY="+id,
+		"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@e",
+		"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@e",
+	)
+	run := func(t *testing.T, dir, name string, args ...string) string {
+		t.Helper()
+		cmd := exec.Command(name, args...)
+		cmd.Dir = dir
+		cmd.Env = environ
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("%s %s: %v\n%s", name, strings.Join(args, " "), err, out)
+		}
+		return string(out)
+	}
+
+	run(t, repo, "git", "init", "-b", "main")
+	run(t, repo, bin, "key", "gen")
+	run(t, repo, bin, "init", "--user", "alice")
+	os.WriteFile(filepath.Join(repo, ".env"), []byte("SECRET=1\n"), 0o644)
+	run(t, repo, "git", "add", ".gitsafe", ".gitattributes", ".env")
+	run(t, repo, "git", "commit", "-m", "secret")
+
+	// Linked worktree on a new branch.
+	wt := filepath.Join(t.TempDir(), "wt")
+	run(t, repo, "git", "worktree", "add", "-b", "staging", wt)
+
+	// smudge in the worktree: alice (a reader) sees plaintext.
+	if got, _ := os.ReadFile(filepath.Join(wt, ".env")); string(got) != "SECRET=1\n" {
+		t.Fatalf("worktree should decrypt for alice, got %q", got)
+	}
+	// clean in the worktree works without re-trusting (pin shared via common dir).
+	os.WriteFile(filepath.Join(wt, ".env"), []byte("SECRET=2\n"), 0o644)
+	run(t, wt, "git", "add", ".env")
+	stored := run(t, wt, "git", "cat-file", "blob", ":.env")
+	if !strings.HasPrefix(stored, "\x00gitsafe\x00") {
+		t.Fatal("worktree clean must encrypt without a separate trust step")
+	}
+}
+
 type pubKeys struct{ sign, enc string }
 
 // gitsafeKeyGenPub generates an identity at idPath and returns its public keys

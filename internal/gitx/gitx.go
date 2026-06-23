@@ -39,10 +39,13 @@ func Root() (string, error) {
 	return runStr("rev-parse", "--show-toplevel")
 }
 
-// GitDir returns the absolute path of the repository's .git directory. The
-// trust pin lives here (per-clone, never committed).
+// GitDir returns the absolute path of the repository's *common* git directory.
+// The trust pin and verified-head cache live here. Using the common dir (not the
+// per-worktree git dir) means trust is established once per clone and shared by
+// all linked worktrees — trust is a property of the repository's policy, not of
+// a particular working tree.
 func GitDir() (string, error) {
-	return runStr("rev-parse", "--absolute-git-dir")
+	return runStr("rev-parse", "--path-format=absolute", "--git-common-dir")
 }
 
 // InRepo reports whether the current directory is inside a git work tree.
