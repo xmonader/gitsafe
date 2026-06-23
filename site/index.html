@@ -287,36 +287,12 @@
   </div>
 </header>
 
-<section id="problem">
-  <div class="wrap">
-    <div class="sec-head">
-      <span class="eyebrow">The problem</span>
-      <h2>Today you have to pick the lesser evil.</h2>
-      <p>You want secrets next to your code — but not readable by everyone, and easy to take away later. Every existing option drops one of those.</p>
-    </div>
-    <div class="cards3">
-      <div class="card">
-        <h3><span class="x">✕</span>git-crypt</h3>
-        <p>Encrypts files in git, but "who can read" is just "whoever has a key." No way to say who can read which branch, and no clean way to cut someone off when they leave.</p>
-      </div>
-      <div class="card">
-        <h3><span class="x">✕</span>SOPS</h3>
-        <p>Encrypts files, but you hand-edit the list of who's allowed in <span class="code">.sops.yaml</span>. No branch-based access, and no record of who was given what.</p>
-      </div>
-      <div class="card">
-        <h3><span class="x">✕</span>Vault / Doppler</h3>
-        <p>Powerful — but they pull your secrets <em>out</em> of git and into a paid cloud service you now depend on. The access rules live in their database, not with your code.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
 <section id="how">
   <div class="wrap">
     <div class="sec-head">
       <span class="eyebrow">The idea</span>
       <h2>Who can read the branch is who can read its secrets.</h2>
-      <p>Give someone read access to <span class="code">staging</span> and they can decrypt <span class="code">staging</span>'s secrets — automatically. You never keep two lists. Remove them, run <span class="code">rotate</span>, and the secrets are re-encrypted without them. Onboard a teammate in one step, grant whole roles with groups, and even merge encrypted files — without ever leaving ciphertext behind.</p>
+      <p>Grant read on <span class="code">staging</span> and that person can decrypt <span class="code">staging</span>'s secrets — automatically. One list, not two. Revoke them and the secrets re-encrypt without them.</p>
     </div>
     <div class="steps">
       <div class="step">
@@ -399,20 +375,12 @@ JWT_SECRET=Hx9-…</pre>
     </div>
     <div class="sec-grid">
       <div class="sbox">
-        <h3>The access list is tamper-evident</h3>
-        <p>The list of who's allowed is signed and stored in the repo. Change any part of it without the right key and verification fails — so you can always tell it's genuine.</p>
+        <h3>The access list can't be forged</h3>
+        <p>It's signed and stored in the repo, and each clone pins its fingerprint the first time you trust it (like SSH). Tamper with it or swap it out, and gitsafe stops.</p>
       </div>
       <div class="sbox">
-        <h3>You confirm trust once</h3>
-        <p>Each clone remembers the access list's fingerprint the first time you trust it — just like SSH asks "are you sure?" the first time. If it's later swapped out, gitsafe stops.</p>
-      </div>
-      <div class="sbox">
-        <h3>Private keys stay out — and locked down</h3>
-        <p>Your keys live in <span class="code">~/.config/gitsafe</span> and never enter the repo, which only ever holds public keys. Protect them on disk too with a passphrase (<span class="code">key gen --passphrase</span>).</p>
-      </div>
-      <div class="sbox">
-        <h3>Honest about the limits</h3>
-        <p>Covered by automated tests on every change — and the <a href="https://github.com/xmonader/gitsafe/blob/main/docs/threat-model.md">threat model</a> spells out exactly what's protected and what isn't, including old secrets after you remove someone.</p>
+        <h3>Private keys stay out — and honest limits</h3>
+        <p>Keys live in <span class="code">~/.config/gitsafe</span>, never in the repo (optionally passphrase-locked). The <a href="https://github.com/xmonader/gitsafe/blob/main/docs/threat-model.md">threat model</a> spells out exactly what's protected and what isn't.</p>
       </div>
     </div>
     <div class="term verify">
@@ -443,7 +411,7 @@ JWT_SECRET=Hx9-…</pre>
 <span class="c-pr">$</span> <span class="c-cmd">gitsafe onboard bob staging --sign &lt;hex&gt; --enc age1…</span>  <span class="c-key"># bob can now read staging</span></pre>
     </div>
     <div class="note">
-      <b>Status — v0.1, working core.</b> The command-line tool, the encrypt/decrypt filters, the signed access list, per-branch access, offline verification, key rotation, grant-by-role groups, an encrypted-file merge driver, passphrase-protected keys, and an access-history audit all work and are covered by automated tests that run on every change. Not yet independently security-audited.
+      <b>Status — v0.1, working core.</b> Everything here works and is covered by automated tests on every change — including groups, an encrypted-file merge driver, passphrase-locked keys, and an access-history audit. Not yet independently security-audited.
     </div>
   </div>
 </section>
