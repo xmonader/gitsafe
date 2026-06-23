@@ -316,7 +316,7 @@
     <div class="sec-head">
       <span class="eyebrow">The idea</span>
       <h2>Who can read the branch is who can read its secrets.</h2>
-      <p>Give someone read access to <span class="code">staging</span> and they can decrypt <span class="code">staging</span>'s secrets — automatically. You never keep two lists. Remove them, run <span class="code">rotate</span>, and the secrets are re-encrypted without them.</p>
+      <p>Give someone read access to <span class="code">staging</span> and they can decrypt <span class="code">staging</span>'s secrets — automatically. You never keep two lists. Remove them, run <span class="code">rotate</span>, and the secrets are re-encrypted without them. Onboard a teammate in one step, grant whole roles with groups, and even merge encrypted files — without ever leaving ciphertext behind.</p>
     </div>
     <div class="steps">
       <div class="step">
@@ -407,8 +407,8 @@ JWT_SECRET=Hx9-…</pre>
         <p>Each clone remembers the access list's fingerprint the first time you trust it — just like SSH asks "are you sure?" the first time. If it's later swapped out, gitsafe stops.</p>
       </div>
       <div class="sbox">
-        <h3>Private keys stay out</h3>
-        <p>Your keys live in <span class="code">~/.config/gitsafe</span> and never enter the repo. The repo only ever holds public keys.</p>
+        <h3>Private keys stay out — and locked down</h3>
+        <p>Your keys live in <span class="code">~/.config/gitsafe</span> and never enter the repo, which only ever holds public keys. Protect them on disk too with a passphrase (<span class="code">key gen --passphrase</span>).</p>
       </div>
       <div class="sbox">
         <h3>Honest about the limits</h3>
@@ -439,13 +439,11 @@ JWT_SECRET=Hx9-…</pre>
 <span class="c-pr">$</span> <span class="c-cmd">echo "API_KEY=sk-live-…" &gt; .env</span>
 <span class="c-pr">$</span> <span class="c-cmd">git add .env &amp;&amp; git commit -m "add a secret"</span>
 
-<span class="c-dim"># give a teammate access to one branch:</span>
-<span class="c-pr">$</span> <span class="c-cmd">gitsafe member add bob --sign &lt;hex&gt; --enc age1…</span>
-<span class="c-pr">$</span> <span class="c-cmd">gitsafe grant bob read staging</span>
-<span class="c-pr">$</span> <span class="c-cmd">gitsafe rotate</span>                   <span class="c-key"># re-encrypt so bob is now included</span></pre>
+<span class="c-dim"># give a teammate access to one branch — add, grant, and rotate in one step:</span>
+<span class="c-pr">$</span> <span class="c-cmd">gitsafe onboard bob staging --sign &lt;hex&gt; --enc age1…</span>  <span class="c-key"># bob can now read staging</span></pre>
     </div>
     <div class="note">
-      <b>Status — v0.1, working core.</b> The command-line tool, the encrypt/decrypt filters, the signed access list, per-branch access, offline verification, and key rotation all work and are covered by automated tests that run on every change. Not yet independently security-audited.
+      <b>Status — v0.1, working core.</b> The command-line tool, the encrypt/decrypt filters, the signed access list, per-branch access, offline verification, key rotation, grant-by-role groups, an encrypted-file merge driver, passphrase-protected keys, and an access-history audit all work and are covered by automated tests that run on every change. Not yet independently security-audited.
     </div>
   </div>
 </section>
