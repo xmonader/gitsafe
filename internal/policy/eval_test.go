@@ -90,6 +90,23 @@ func TestRecipientsPublicVsRestrictedAndRevoked(t *testing.T) {
 	}
 }
 
+func TestReaderNames(t *testing.T) {
+	p := base()
+	p.Grants = []Grant{
+		{ID: "a", Subject: "alice", Verb: Admin, Resource: "refs/heads/**"}, // admin => reader
+		{ID: "b", Subject: "devs", Verb: Read, Resource: "refs/heads/staging"},
+	}
+	names := p.ReaderNames("refs/heads/staging")
+	// alice (admin) + devs(alice,bob); eve is revoked and must be excluded.
+	if len(names) != 2 || names[0] != "alice" || names[1] != "bob" {
+		t.Fatalf("ReaderNames(staging) = %v, want [alice bob]", names)
+	}
+	// main: only alice (admin); bob has no grant on main.
+	if names := p.ReaderNames("refs/heads/main"); len(names) != 1 || names[0] != "alice" {
+		t.Fatalf("ReaderNames(main) = %v, want [alice]", names)
+	}
+}
+
 func TestChainVerifyDetectsTampering(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(nil)
 	p := base()

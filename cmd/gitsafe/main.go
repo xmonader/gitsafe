@@ -28,6 +28,8 @@ Usage:
   gitsafe rotate                                     Re-encrypt secrets to current readers
 
   gitsafe trust [--fingerprint HEX] [--force]        Pin this clone to the policy root (TOFU)
+  gitsafe access RESOURCE          Show who can decrypt secrets on a branch/ref
+  gitsafe whoami                   Show your identity and policy membership
   gitsafe policy show             Show the current policy
   gitsafe policy verify           Verify the signed policy chain offline
 
@@ -63,6 +65,10 @@ func main() {
 		err = cmdRotate(args)
 	case "trust":
 		err = cmdTrust(args)
+	case "access":
+		err = cmdAccess(args)
+	case "whoami":
+		err = cmdWhoami(args)
 	case "policy":
 		err = cmdPolicy(args)
 	case "version", "--version", "-v":

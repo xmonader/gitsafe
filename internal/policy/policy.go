@@ -192,6 +192,23 @@ func (p *Policy) Recipients(resource string) []string {
 	return out
 }
 
+// ReaderNames returns the names of active members who can decrypt resource —
+// the human-readable counterpart of Recipients, for auditing "who can read X".
+func (p *Policy) ReaderNames(resource string) []string {
+	readers, public := p.Readers(resource)
+	var out []string
+	for name, m := range p.Keyring {
+		if m.Status == "revoked" {
+			continue
+		}
+		if public || readers[name] {
+			out = append(out, name)
+		}
+	}
+	sortStrings(out)
+	return out
+}
+
 func (p *Policy) subjectMatches(subject, actor string) bool {
 	switch {
 	case subject == "*":

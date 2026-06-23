@@ -2,10 +2,13 @@ package main
 
 import (
 	"crypto/ed25519"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+
+	"filippo.io/age"
 
 	"gitsafe/internal/format"
 	"gitsafe/internal/gitx"
@@ -41,10 +44,11 @@ func cmdMember(args []string) error {
 
 func memberAdd(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: gitsafe member add NAME --sign HEX --enc age1...")
+		return fmt.Errorf("usage: gitsafe member add NAME --sign HEX --enc age1... [--update]")
 	}
 	name := args[0]
 	var sign, enc string
+	update := false
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
 		case "--sign":
@@ -59,12 +63,17 @@ func memberAdd(args []string) error {
 			}
 			enc = args[i+1]
 			i++
+		case "--update":
+			update = true
 		default:
 			return fmt.Errorf("unknown flag %q", args[i])
 		}
 	}
 	if sign == "" || enc == "" {
 		return fmt.Errorf("both --sign and --enc are required")
+	}
+	if err := validateMemberKeys(sign, enc); err != nil {
+		return err
 	}
 	rc, err := loadRepo()
 	if err != nil {
@@ -75,13 +84,33 @@ func memberAdd(args []string) error {
 		return err
 	}
 	_, err = rc.store.Mutate(who, priv, func(p *policy.Policy) error {
+		if _, exists := p.Keyring[name]; exists && !update {
+			return fmt.Errorf("member %q already exists; pass --update to replace their keys (e.g. after a key rotation)", name)
+		}
 		p.Keyring[name] = policy.Member{Sign: sign, Enc: enc, Status: "active"}
 		return nil
 	})
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Added member %q. Grant them access, then 'gitsafe rotate'.\n", name)
+	verb := "Added"
+	if update {
+		verb = "Updated"
+	}
+	fmt.Printf("%s member %q. Grant them access, then 'gitsafe rotate'.\n", verb, name)
+	return nil
+}
+
+// validateMemberKeys rejects obviously malformed public keys before they enter
+// the signed keyring, where a typo would silently produce undecryptable secrets.
+func validateMemberKeys(signHex, enc string) error {
+	raw, err := hex.DecodeString(signHex)
+	if err != nil || len(raw) != ed25519.PublicKeySize {
+		return fmt.Errorf("--sign must be a %d-byte ed25519 public key in hex", ed25519.PublicKeySize)
+	}
+	if _, err := age.ParseX25519Recipient(enc); err != nil {
+		return fmt.Errorf("--enc must be a valid age recipient (age1...): %w", err)
+	}
 	return nil
 }
 
