@@ -99,6 +99,25 @@
   .lede { font-size: 21px; color: var(--ink-dim); margin-top: 26px; max-width: 33ch; line-height: 1.55; }
   .lede b { color: var(--ink); font-weight: 500; }
 
+  .props { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 30px; }
+  .prop {
+    font-family: var(--mono); font-size: 13px; letter-spacing: .01em; color: var(--ink-dim);
+    border: 1px solid var(--line-2); border-radius: 999px; padding: 8px 15px;
+    display: flex; align-items: center; gap: 8px; background: var(--bg-2);
+  }
+  .prop b { color: var(--ink); font-weight: 600; }
+  .prop .tick { color: var(--brass); font-weight: 700; }
+
+  .hook {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: var(--mono); font-size: 12.5px; font-weight: 600;
+    letter-spacing: .06em; text-transform: uppercase; color: var(--brass);
+    border: 1px solid var(--brass-dim); background: rgba(224,163,79,.08);
+    padding: 7px 14px; border-radius: 999px;
+  }
+  .hook .dotpulse { width: 7px; height: 7px; border-radius: 50%; background: var(--brass); box-shadow: 0 0 0 0 rgba(224,163,79,.6); animation: pulse 2.2s infinite; }
+  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(224,163,79,.55);} 70%{box-shadow:0 0 0 7px rgba(224,163,79,0);} 100%{box-shadow:0 0 0 0 rgba(224,163,79,0);} }
+
   .cta { display: flex; gap: 14px; margin-top: 38px; flex-wrap: wrap; align-items: center; }
   .btn {
     font-family: var(--mono); font-size: 13px; font-weight: 600; letter-spacing: 0.04em;
@@ -251,9 +270,14 @@
 <header class="hero">
   <div class="wrap hero-grid">
     <div>
-      <span class="eyebrow reveal" style="animation-delay:.05s">git-crypt, with real access control</span>
+      <span class="hook reveal" style="animation-delay:.05s"><span class="dotpulse"></span>git-crypt, with real access control</span>
       <h1 class="title reveal" style="animation-delay:.12s">Your <span class="amp">.env</span> in git,<br>readable only by<br>the right people.</h1>
       <p class="lede reveal" style="animation-delay:.22s">Commit secrets straight into your repo. gitsafe encrypts them to exactly who can read the branch — the right people just <b>cat</b> the file, everyone else gets ciphertext. No server, no vault, no second list to keep.</p>
+      <div class="props reveal" style="animation-delay:.27s">
+        <span class="prop"><span class="tick">✓</span> Encrypted <b>in git</b></span>
+        <span class="prop"><span class="tick">✓</span> Access <b>per branch</b></span>
+        <span class="prop"><span class="tick">✓</span> <b>No server</b>, no vault</span>
+      </div>
       <div class="cta reveal" style="animation-delay:.30s">
         <a class="btn btn-primary" href="#start">Get started</a>
         <a class="btn btn-ghost" href="https://github.com/xmonader/gitsafe">Read the code ↗</a>
