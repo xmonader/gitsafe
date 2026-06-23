@@ -220,6 +220,15 @@ func TestTrustGate(t *testing.T) {
 		t.Fatal("init on a cloned policy must NOT auto-pin; trust must be deliberate")
 	}
 
+	// 0. An unpinned clone whose working tree still holds ciphertext must not
+	//    break everyday git: status runs clean on the un-smudged .env, which is
+	//    an envelope and must pass through (no trust needed, no churn).
+	if out, err := runIn(clone, victimID, "git", "status", "--porcelain"); err != nil {
+		t.Fatalf("git status must work in an unpinned clone, got error:\n%s", out)
+	} else if strings.Contains(out, ".env") {
+		t.Fatalf("unchanged encrypted .env must not show as modified, got:\n%s", out)
+	}
+
 	// 1. Unpinned clone refuses to encrypt a new secret.
 	os.WriteFile(filepath.Join(clone, "svc.pem"), []byte("K=v\n"), 0o644)
 	if out, err := runIn(clone, victimID, "git", "add", "svc.pem"); err == nil {

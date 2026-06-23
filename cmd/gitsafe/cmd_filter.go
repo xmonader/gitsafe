@@ -46,6 +46,24 @@ func cmdClean(args []string) error {
 		return err
 	}
 
+	// Already-encrypted input: smudge did not decrypt for us (a locked user, or
+	// a clone whose working tree still holds ciphertext because filters were not
+	// configured at checkout time). Never re-encrypt an envelope — that would
+	// double-wrap the secret and, for unchanged content, churn status. Preserve
+	// the stored blob (authoritative), or pass the envelope through if this is a
+	// genuinely new pre-encrypted file. This path needs no policy/trust because
+	// there is no plaintext to protect.
+	if format.IsWrapped(input) {
+		if stored, found, err := gitx.StoredBlob(path); err != nil {
+			return err
+		} else if found {
+			_, err = os.Stdout.Write(stored)
+			return err
+		}
+		_, err = os.Stdout.Write(input)
+		return err
+	}
+
 	res, err := gitx.BranchResource()
 	if err != nil {
 		return err
