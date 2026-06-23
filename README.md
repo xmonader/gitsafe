@@ -22,6 +22,12 @@ gitsafe adds the one thing the file-based tools lack: a **portable, signed, offl
 
 It runs **on top of real git**: clean/smudge filters, a signed policy committed in the repo, recipients resolved from the current branch. Your host, CI, IDE, and review flow are untouched.
 
+## Documentation
+
+- **[Tutorial](docs/tutorial.md)** — learn by doing: protect your first secret, onboard a teammate, branch-scoped access, cloning, offboarding, CI, auditing.
+- **[User Guide](docs/userguide.md)** — reference: concepts, on-disk layout, the policy & trust models, full command reference, troubleshooting.
+- **[Design](docs/design.md)** · **[Strategy](docs/strategy.md)** — architecture and positioning.
+
 ## Install
 
 ```bash
