@@ -27,6 +27,7 @@ Usage:
   gitsafe revoke SUBJECT VERB RESOURCE               Remove matching grant(s)
   gitsafe rotate                                     Re-encrypt secrets to current readers
 
+  gitsafe trust [--fingerprint HEX] [--force]        Pin this clone to the policy root (TOFU)
   gitsafe policy show             Show the current policy
   gitsafe policy verify           Verify the signed policy chain offline
 
@@ -60,6 +61,8 @@ func main() {
 		err = cmdRevoke(args)
 	case "rotate":
 		err = cmdRotate(args)
+	case "trust":
+		err = cmdTrust(args)
 	case "policy":
 		err = cmdPolicy(args)
 	case "version", "--version", "-v":

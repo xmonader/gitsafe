@@ -225,7 +225,7 @@ func cmdPolicy(args []string) error {
 	}
 	switch args[0] {
 	case "verify":
-		n, err := rc.store.VerifyChain()
+		n, rootPub, err := rc.store.VerifyChainRoot()
 		if err != nil {
 			return err
 		}
@@ -235,6 +235,16 @@ func cmdPolicy(args []string) error {
 		}
 		head, _ := rc.store.HeadHash()
 		fmt.Printf("Policy chain valid: %d version(s), head %s\n", n, short(head))
+		fmt.Printf("Root fingerprint:  %s\n", rootPub)
+		pin, _ := readPin()
+		switch {
+		case pin == "":
+			fmt.Println("Trust:             NOT PINNED in this clone (run 'gitsafe trust')")
+		case pin == rootPub:
+			fmt.Println("Trust:             pinned and matches ✓")
+		default:
+			fmt.Printf("Trust:             MISMATCH — pinned %s (possible tampering)\n", short(pin))
+		}
 		return nil
 	case "show":
 		return policyShow(rc)

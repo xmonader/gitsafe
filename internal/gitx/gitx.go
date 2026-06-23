@@ -39,6 +39,12 @@ func Root() (string, error) {
 	return runStr("rev-parse", "--show-toplevel")
 }
 
+// GitDir returns the absolute path of the repository's .git directory. The
+// trust pin lives here (per-clone, never committed).
+func GitDir() (string, error) {
+	return runStr("rev-parse", "--absolute-git-dir")
+}
+
 // InRepo reports whether the current directory is inside a git work tree.
 func InRepo() bool {
 	out, err := runStr("rev-parse", "--is-inside-work-tree")

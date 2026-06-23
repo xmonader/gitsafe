@@ -78,8 +78,22 @@ func cmdInit(args []string) error {
 			return err
 		}
 		fmt.Printf("Bootstrapped policy v0 with %q as admin.\n", user)
+		// The founder is the root: pin it automatically (they trust themselves).
+		if _, rootPub, verr := rc.store.VerifyChainRoot(); verr == nil && rootPub != "" {
+			if err := writePin(rootPub); err != nil {
+				return err
+			}
+			fmt.Printf("Pinned policy root %s\n", short(rootPub))
+		}
 	} else {
-		fmt.Printf("Policy already present (v%d); left unchanged.\n", cur.Version)
+		// Existing policy (e.g. a fresh clone): wire up filters but do NOT pin
+		// automatically — trust must be established deliberately, out-of-band.
+		fmt.Printf("Policy already present (v%d); filters wired.\n", cur.Version)
+		if pin, _ := readPin(); pin == "" {
+			if _, rootPub, verr := rc.store.VerifyChainRoot(); verr == nil && rootPub != "" {
+				fmt.Printf("Policy root fingerprint:\n  %s\nVerify it out-of-band, then run 'gitsafe trust' before committing secrets.\n", rootPub)
+			}
+		}
 	}
 
 	fmt.Printf(`

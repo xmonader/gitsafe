@@ -54,12 +54,12 @@ func cmdClean(args []string) error {
 	if err != nil {
 		return err
 	}
-	pol, err := rc.store.Load()
+	// Verify the signed chain and that its root matches this clone's pin BEFORE
+	// trusting any recipient it names — otherwise a poisoned or replaced policy
+	// could redirect this secret's encryption to an attacker's key.
+	pol, err := trustedPolicy(rc)
 	if err != nil {
 		return err
-	}
-	if pol == nil {
-		return fmt.Errorf("no gitsafe policy in this repo (run 'gitsafe init')")
 	}
 	recipients := pol.Recipients(res)
 	if len(recipients) == 0 {

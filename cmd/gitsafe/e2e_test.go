@@ -143,6 +143,105 @@ func TestEndToEnd(t *testing.T) {
 	}
 }
 
+// TestTrustGate proves the encrypt path refuses to act on an untrusted policy:
+// an unpinned clone won't encrypt, and a content-only attacker who replaces the
+// policy root (without access to your local .git pin) is detected and refused.
+func TestTrustGate(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	binDir := t.TempDir()
+	bin := filepath.Join(binDir, "gitsafe")
+	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
+		t.Fatalf("build gitsafe: %v\n%s", err, out)
+	}
+
+	env := func(idPath string) []string {
+		e := append([]string{}, os.Environ()...)
+		return append(e,
+			"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+			"GITSAFE_IDENTITY="+idPath,
+			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@e",
+			"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@e",
+		)
+	}
+	// runIn runs a command and returns combined stderr+stdout plus the error.
+	runIn := func(dir, idPath, name string, args ...string) (string, error) {
+		cmd := exec.Command(name, args...)
+		cmd.Dir = dir
+		cmd.Env = env(idPath)
+		var out bytes.Buffer
+		cmd.Stdout = &out
+		cmd.Stderr = &out
+		err := cmd.Run()
+		return out.String(), err
+	}
+	mustRun := func(t *testing.T, dir, idPath, name string, args ...string) string {
+		t.Helper()
+		out, err := runIn(dir, idPath, name, args...)
+		if err != nil {
+			t.Fatalf("%s %s: %v\n%s", name, strings.Join(args, " "), err, out)
+		}
+		return out
+	}
+
+	origin := t.TempDir()
+	adminID := filepath.Join(t.TempDir(), "admin")
+	victimID := filepath.Join(t.TempDir(), "victim")
+	attackerID := filepath.Join(t.TempDir(), "attacker")
+
+	// Origin repo: admin bootstraps (auto-pins) and commits a secret.
+	mustRun(t, origin, adminID, "git", "init", "-b", "main")
+	mustRun(t, origin, adminID, bin, "key", "gen")
+	mustRun(t, origin, adminID, bin, "init", "--user", "admin")
+	os.WriteFile(filepath.Join(origin, ".env"), []byte("SECRET=1\n"), 0o644)
+	mustRun(t, origin, adminID, "git", "add", ".gitsafe", ".gitattributes", ".env")
+	mustRun(t, origin, adminID, "git", "commit", "-m", "init")
+
+	// Fresh clone: victim wires filters via init, which must NOT auto-pin.
+	clone := filepath.Join(t.TempDir(), "clone")
+	mustRun(t, "", adminID, "git", "clone", origin, clone)
+	mustRun(t, clone, victimID, bin, "key", "gen")
+	initOut := mustRun(t, clone, victimID, bin, "init", "--user", "victim")
+	if strings.Contains(initOut, "Pinned policy root") {
+		t.Fatal("init on a cloned policy must NOT auto-pin; trust must be deliberate")
+	}
+
+	// 1. Unpinned clone refuses to encrypt a new secret.
+	os.WriteFile(filepath.Join(clone, "svc.pem"), []byte("K=v\n"), 0o644)
+	if out, err := runIn(clone, victimID, "git", "add", "svc.pem"); err == nil {
+		t.Fatalf("git add must fail in an unpinned clone, but succeeded:\n%s", out)
+	} else if !strings.Contains(out, "not trusted") {
+		t.Fatalf("expected a 'not trusted' error, got:\n%s", out)
+	}
+
+	// 2. After deliberate trust, encryption works.
+	mustRun(t, clone, victimID, bin, "trust")
+	mustRun(t, clone, victimID, "git", "add", "svc.pem")
+	stored := mustRun(t, clone, victimID, "git", "cat-file", "blob", ":svc.pem")
+	if !strings.HasPrefix(stored, "\x00gitsafe\x00") {
+		t.Fatal("after trust, the staged secret must be encrypted")
+	}
+
+	// 3. Content-only attacker replaces the policy root (no access to the local
+	//    .git pin). Simulate by re-bootstrapping the committed policy under a new
+	//    key, then restoring the victim's pin (the attacker never touched .git).
+	pinPath := filepath.Join(clone, ".git", "gitsafe", "root")
+	victimPin, _ := os.ReadFile(pinPath)
+	os.RemoveAll(filepath.Join(clone, ".gitsafe", "policy"))
+	mustRun(t, clone, attackerID, bin, "key", "gen")
+	mustRun(t, clone, attackerID, bin, "init", "--user", "attacker")
+	os.WriteFile(pinPath, victimPin, 0o644) // attacker couldn't touch your .git
+
+	// 4. Victim now refuses: the policy root no longer matches the pin.
+	os.WriteFile(filepath.Join(clone, "other.pem"), []byte("X=y\n"), 0o644)
+	if out, err := runIn(clone, victimID, "git", "add", "other.pem"); err == nil {
+		t.Fatalf("git add must fail after a root replacement, but succeeded:\n%s", out)
+	} else if !strings.Contains(out, "root changed") && !strings.Contains(out, "REFUSING") {
+		t.Fatalf("expected a root-mismatch refusal, got:\n%s", out)
+	}
+}
+
 type pubKeys struct{ sign, enc string }
 
 // gitsafeKeyGenPub generates an identity at idPath and returns its public keys

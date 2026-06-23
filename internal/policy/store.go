@@ -198,19 +198,28 @@ func clone(p *Policy) Policy {
 // signature and authority and that parent hashes link correctly. Returns the
 // number of versions.
 func (s *Store) VerifyChain() (int, error) {
+	n, _, err := s.VerifyChainRoot()
+	return n, err
+}
+
+// VerifyChainRoot verifies the whole chain and additionally returns the root
+// version's signer public key (hex). That key is the trust anchor: a clone pins
+// it (TOFU) so a wholesale chain replacement under a different root — which
+// would otherwise verify as internally consistent — is detected.
+func (s *Store) VerifyChainRoot() (int, string, error) {
 	head, err := s.head()
 	if err != nil {
-		return 0, err
+		return 0, "", err
 	}
 	if head == "" {
-		return 0, nil
+		return 0, "", nil
 	}
 	var chain []*Policy
 	h := head
 	for h != "" {
 		p, err := s.loadObject(h)
 		if err != nil {
-			return 0, err
+			return 0, "", err
 		}
 		chain = append(chain, p)
 		h = p.Parent
@@ -222,10 +231,12 @@ func (s *Store) VerifyChain() (int, error) {
 			parent = chain[i+1]
 		}
 		if err := chain[i].Verify(parent); err != nil {
-			return 0, err
+			return 0, "", err
 		}
 	}
-	return len(chain), nil
+	root := chain[len(chain)-1]
+	rootPub := root.Keyring[root.Signer].Sign
+	return len(chain), rootPub, nil
 }
 
 // trimSpace trims surrounding ASCII whitespace without importing strings.
