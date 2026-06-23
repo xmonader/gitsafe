@@ -5,6 +5,7 @@ import (
 
 	"gitsafe/internal/format"
 	"gitsafe/internal/gitx"
+	"gitsafe/internal/secret"
 )
 
 // cmdCheck inspects what is staged and fails if any gitsafe-marked file is about
@@ -15,7 +16,8 @@ import (
 //	# .git/hooks/pre-commit
 //	exec gitsafe check
 func cmdCheck(args []string) error {
-	if _, err := loadRepo(); err != nil {
+	rc, err := loadRepo()
+	if err != nil {
 		return err
 	}
 	marked, err := gitx.FilteredFiles()
@@ -31,9 +33,18 @@ func cmdCheck(args []string) error {
 		return err
 	}
 
+	// Also treat files matching the policy's secret_paths as secrets, even if a
+	// missing .gitattributes entry means git never ran the filter on them — the
+	// exact gap (filters not active) this check exists to catch.
+	var secretPaths []string
+	if pol, _ := rc.store.Load(); pol != nil {
+		secretPaths = pol.SecretPaths
+	}
+
 	var leaking []string
 	for _, f := range staged {
-		if !markedSet[f] {
+		isSecret := markedSet[f] || secret.Match(f, secretPaths)
+		if !isSecret {
 			continue
 		}
 		blob, found, err := gitx.StoredBlob(f) // reads the staged (index) blob first
