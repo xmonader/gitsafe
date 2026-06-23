@@ -26,6 +26,7 @@ It runs **on top of real git**: clean/smudge filters, a signed policy committed 
 
 - **[Tutorial](docs/tutorial.md)** — learn by doing: protect your first secret, onboard a teammate, branch-scoped access, cloning, offboarding, CI, auditing.
 - **[User Guide](docs/userguide.md)** — reference: concepts, on-disk layout, the policy & trust models, full command reference, troubleshooting.
+- **[Threat Model](docs/threat-model.md)** — assets, trust boundaries, adversaries, residual risks, and where each gate is enforced.
 - **[Design](docs/design.md)** · **[Strategy](docs/strategy.md)** — architecture and positioning.
 
 ## Install
@@ -95,6 +96,8 @@ Until you pin the root with `gitsafe trust`, gitsafe **refuses to encrypt** (it 
 | `gitsafe revoke SUBJECT VERB RESOURCE` | Remove a matching grant |
 | `gitsafe rotate` | Re-encrypt all marked files to the current readers and stage them |
 | `gitsafe trust [--fingerprint HEX] [--force]` | Pin this clone to the policy root (TOFU) |
+| `gitsafe access RESOURCE` | Show who can decrypt secrets on a branch/ref |
+| `gitsafe whoami` | Show your identity and policy membership |
 | `gitsafe policy show` | Print the current keyring and grants |
 | `gitsafe policy verify` | Verify the signed chain offline + show root fingerprint and pin status |
 | `gitsafe clean` / `smudge` | The git filters (invoked by git, not by hand) |

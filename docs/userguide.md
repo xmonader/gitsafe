@@ -346,6 +346,16 @@ Pin this clone to the policy root.
   root differs (a safety assertion, useful in scripts/CI).
 - `--force`: re-pin even though a *different* root is already pinned.
 
+### `gitsafe access RESOURCE`
+Resolve who can decrypt secrets on a branch/ref: prints the active reader names
+(expanding groups, admins, and public) and the age-recipient count. The core
+audit query.
+
+### `gitsafe whoami`
+Print your configured user name, local identity public keys, your keyring status,
+an integrity check that the keyring entry matches your local identity, and the
+grants where you're the direct subject.
+
 ### `gitsafe policy show`
 Print the current policy version, keyring (name, status, age key), and grants.
 
@@ -375,7 +385,9 @@ The git filters. You don't call these by hand — git invokes them. Documented i
   after offboarding.
 
 See the [README security section](../README.md#security-model--threat-boundaries)
-for the same boundaries in pitch form.
+for the same boundaries in pitch form, and the full
+[Threat Model](threat-model.md) for assets, adversaries, residual risks, and the
+exact code gates that enforce each claim.
 
 ---
 
@@ -417,5 +429,10 @@ No — the clean filter refuses when it can't unambiguously resolve the branch
 branch checkout.
 
 **How do I see exactly who can decrypt branch X?**
-`gitsafe policy show` lists members and grants; recipients for X are the active
-members with a read-satisfying grant matching `refs/heads/X` (admins included).
+`gitsafe access X` resolves it directly (expanding groups, admins, and public to
+concrete active members). `gitsafe policy show` gives the raw keyring and grants.
+
+**Do linked worktrees work?**
+Yes. Git filter config and the trust pin live in the *common* git dir, so they're
+shared across all worktrees of a clone — establish trust once and every worktree
+inherits it. (See `TestWorktree`.)
