@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>gitsafe — git-crypt with access control</title>
+<meta name="description" content="Encrypt secrets in your git repo to exactly the people who can read the branch — enforced by a signed policy that verifies offline, with no vendor." />
+<meta property="og:title" content="gitsafe — git-crypt with access control" />
+<meta property="og:description" content="Branch-scoped, signed, offline-verifiable secret encryption on top of real git. No server. No vendor." />
+<meta property="og:type" content="website" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230a0b0d'/%3E%3Cpath d='M11 14v-2a5 5 0 0 1 10 0v2h1a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h1zm2 0h6v-2a3 3 0 0 0-6 0v2z' fill='%23e0a34f'/%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Martian+Mono:wght@300;400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,400&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg:        #0a0b0d;
+    --bg-2:      #0f1113;
+    --surface:   #121519;
+    --surface-2: #171b20;
+    --line:      rgba(232,228,218,0.10);
+    --line-2:    rgba(232,228,218,0.18);
+    --ink:       #e8e4da;
+    --ink-dim:   #9a968c;
+    --ink-faint: #6b675f;
+    --brass:     #e0a34f;
+    --brass-dim: #b9863f;
+    --locked:    #c8685c;
+    --green:     #8fa876;
+    --mono: 'Martian Mono', ui-monospace, monospace;
+    --code: 'JetBrains Mono', ui-monospace, monospace;
+    --serif: 'Newsreader', Georgia, serif;
+    --maxw: 1140px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: 18px;
+    line-height: 1.65;
+    overflow-x: hidden;
+    position: relative;
+  }
+  /* grain + atmospheric glow */
+  body::before {
+    content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background:
+      radial-gradient(900px 500px at 78% -8%, rgba(224,163,79,0.10), transparent 60%),
+      radial-gradient(700px 600px at -10% 110%, rgba(143,168,118,0.05), transparent 60%);
+  }
+  body::after {
+    content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 28px; position: relative; z-index: 1; }
+
+  ::selection { background: var(--brass); color: #14110b; }
+  a { color: var(--brass); text-decoration: none; }
+  a:hover { color: var(--ink); }
+
+  .mono { font-family: var(--mono); }
+  .code { font-family: var(--code); }
+  .eyebrow {
+    font-family: var(--mono); font-size: 11px; font-weight: 600;
+    letter-spacing: 0.32em; text-transform: uppercase; color: var(--brass);
+  }
+
+  /* ---- nav ---- */
+  nav {
+    position: sticky; top: 0; z-index: 50;
+    backdrop-filter: blur(14px);
+    background: rgba(10,11,13,0.72);
+    border-bottom: 1px solid var(--line);
+  }
+  nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 64px; }
+  .brand { font-family: var(--mono); font-weight: 700; letter-spacing: 0.04em; font-size: 17px; display: flex; align-items: center; gap: 10px; }
+  .brand .lk { color: var(--brass); }
+  .navlinks { display: flex; gap: 30px; align-items: center; }
+  .navlinks a { font-family: var(--mono); font-size: 13px; letter-spacing: 0.04em; color: var(--ink-dim); }
+  .navlinks a:hover { color: var(--ink); }
+  .navlinks .gh { color: var(--ink); border: 1px solid var(--line-2); padding: 8px 16px; border-radius: 4px; transition: .2s; }
+  .navlinks .gh:hover { border-color: var(--brass); color: var(--brass); }
+  @media (max-width: 720px){ .navlinks a:not(.gh){ display:none; } }
+
+  /* ---- hero ---- */
+  .hero { padding: 96px 0 80px; }
+  .hero-grid { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 60px; align-items: center; }
+  @media (max-width: 920px){ .hero-grid { grid-template-columns: 1fr; gap: 44px; } }
+
+  h1.title {
+    font-family: var(--mono); font-weight: 600;
+    font-size: clamp(40px, 6vw, 68px); line-height: 1.02; letter-spacing: -0.02em;
+    margin: 22px 0 0;
+  }
+  h1.title .amp { color: var(--brass); }
+  .lede { font-size: 21px; color: var(--ink-dim); margin-top: 26px; max-width: 33ch; line-height: 1.55; }
+  .lede b { color: var(--ink); font-weight: 500; }
+
+  .cta { display: flex; gap: 14px; margin-top: 38px; flex-wrap: wrap; align-items: center; }
+  .btn {
+    font-family: var(--mono); font-size: 13px; font-weight: 600; letter-spacing: 0.04em;
+    padding: 13px 22px; border-radius: 5px; transition: .2s; cursor: pointer; border: 1px solid transparent;
+  }
+  .btn-primary { background: var(--brass); color: #14110b; box-shadow: 0 0 0 0 rgba(224,163,79,.5); }
+  .btn-primary:hover { background: #f0b969; color: #14110b; box-shadow: 0 8px 30px -8px rgba(224,163,79,.55); transform: translateY(-1px); }
+  .btn-ghost { border-color: var(--line-2); color: var(--ink); }
+  .btn-ghost:hover { border-color: var(--brass); color: var(--brass); }
+
+  .install {
+    margin-top: 34px; display: flex; align-items: stretch; max-width: 460px;
+    border: 1px solid var(--line-2); border-radius: 6px; overflow: hidden; background: var(--bg-2);
+  }
+  .install code { font-family: var(--code); font-size: 13.5px; color: var(--ink); padding: 14px 16px; flex: 1; white-space: nowrap; overflow-x: auto; }
+  .install code .sigil { color: var(--brass); }
+  .install button {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .08em; border: 0; border-left: 1px solid var(--line);
+    background: var(--surface-2); color: var(--ink-dim); padding: 0 18px; cursor: pointer; transition: .2s;
+  }
+  .install button:hover { color: var(--brass); }
+
+  /* ---- terminal demo ---- */
+  .term {
+    background: linear-gradient(180deg, var(--surface), var(--bg-2));
+    border: 1px solid var(--line-2); border-radius: 10px; overflow: hidden;
+    box-shadow: 0 40px 80px -40px rgba(0,0,0,.8), inset 0 1px 0 rgba(255,255,255,.03);
+  }
+  .term-bar { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); background: rgba(0,0,0,.2); }
+  .dot { width: 11px; height: 11px; border-radius: 50%; background: #2a2e33; }
+  .term-bar .t { margin-left: 10px; font-family: var(--code); font-size: 12px; color: var(--ink-faint); }
+  .term-body { padding: 20px 20px 22px; font-family: var(--code); font-size: 13px; line-height: 1.75; }
+  .ln { display: block; white-space: pre-wrap; word-break: break-word; }
+  .c-cmd { color: var(--ink); }
+  .c-pr  { color: var(--brass); }
+  .c-dim { color: var(--ink-faint); }
+  .c-key { color: var(--green); }
+  .c-ct  { color: var(--ink-dim); opacity:.8; }
+  .c-lock{ color: var(--locked); }
+  .blk { margin-top: 4px; padding: 12px 14px; border-radius: 6px; border: 1px solid var(--line); background: rgba(0,0,0,.25); }
+  .blk .tag { font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); display:block; margin-bottom:7px; }
+  .blk.ct .tag { color: var(--brass-dim); }
+  .blk.lock { border-color: rgba(200,104,92,.3); }
+  .blk.lock .tag { color: var(--locked); }
+
+  /* reveal animation */
+  .reveal { opacity: 0; transform: translateY(14px); animation: rise .7s cubic-bezier(.2,.7,.2,1) forwards; }
+  @keyframes rise { to { opacity: 1; transform: none; } }
+
+  /* ---- sections ---- */
+  section { padding: 80px 0; border-top: 1px solid var(--line); }
+  .sec-head { max-width: 720px; margin-bottom: 48px; }
+  h2 { font-family: var(--mono); font-weight: 500; font-size: clamp(26px,3.4vw,36px); letter-spacing: -0.01em; line-height: 1.12; margin-top: 14px; }
+  .sec-head p { color: var(--ink-dim); margin-top: 16px; font-size: 19px; }
+
+  /* problem cards */
+  .cards3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 20px; }
+  @media (max-width: 860px){ .cards3 { grid-template-columns: 1fr; } }
+  .card {
+    border: 1px solid var(--line); border-radius: 9px; padding: 26px; background: var(--surface);
+    transition: .25s;
+  }
+  .card:hover { border-color: var(--line-2); transform: translateY(-3px); }
+  .card h3 { font-family: var(--mono); font-size: 16px; font-weight: 600; letter-spacing: .02em; }
+  .card h3 .x { color: var(--locked); margin-right: 8px; }
+  .card p { color: var(--ink-dim); font-size: 16px; margin-top: 12px; line-height: 1.55; }
+
+  /* steps */
+  .steps { display: grid; grid-template-columns: repeat(3,1fr); gap: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  @media (max-width: 860px){ .steps { grid-template-columns: 1fr; } }
+  .step { padding: 30px 28px; border-right: 1px solid var(--line); position: relative; background: var(--surface); }
+  .step:last-child { border-right: 0; }
+  @media (max-width:860px){ .step { border-right:0; border-bottom:1px solid var(--line);} .step:last-child{border-bottom:0;} }
+  .step .num { font-family: var(--mono); font-size: 12px; color: var(--brass); letter-spacing: .2em; }
+  .step h3 { font-family: var(--mono); font-size: 17px; margin-top: 14px; font-weight: 600; }
+  .step p { color: var(--ink-dim); font-size: 15.5px; margin-top: 10px; }
+  .step code { font-family: var(--code); font-size: 13px; color: var(--ink); background: var(--bg-2); border:1px solid var(--line); padding: 1px 6px; border-radius: 4px; }
+
+  /* two views */
+  .views { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  @media (max-width: 860px){ .views { grid-template-columns: 1fr; } }
+  .view { border: 1px solid var(--line-2); border-radius: 10px; overflow: hidden; background: var(--bg-2); }
+  .view .vh { padding: 14px 18px; border-bottom: 1px solid var(--line); font-family: var(--mono); font-size: 12px; letter-spacing: .06em; display:flex; align-items:center; gap:9px; }
+  .view.read .vh { color: var(--green); }
+  .view.noread .vh { color: var(--locked); }
+  .view pre { font-family: var(--code); font-size: 13px; line-height: 1.7; padding: 18px; overflow-x: auto; color: var(--ink); }
+  .view.noread pre { color: var(--ink-faint); }
+
+  /* comparison table */
+  .tablewrap { border: 1px solid var(--line-2); border-radius: 10px; overflow: hidden; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; min-width: 640px; }
+  th, td { padding: 16px 18px; text-align: left; border-bottom: 1px solid var(--line); }
+  thead th { font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-dim); font-weight: 600; background: rgba(0,0,0,.25); }
+  tbody td:first-child, tbody th:first-child { font-family: var(--mono); font-size: 14px; font-weight: 500; color: var(--ink); }
+  td.c { text-align: center; font-family: var(--code); }
+  .yes { color: var(--brass); font-weight: 700; }
+  .no  { color: var(--ink-faint); }
+  .meh { color: var(--ink-dim); font-size: 12px; }
+  tbody tr.me { background: linear-gradient(90deg, rgba(224,163,79,.10), rgba(224,163,79,.02)); }
+  tbody tr.me th:first-child { color: var(--brass); position: relative; }
+  tbody tr:last-child td, tbody tr:last-child th { border-bottom: 0; }
+
+  /* security */
+  .sec-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 20px; }
+  @media (max-width: 760px){ .sec-grid { grid-template-columns: 1fr; } }
+  .sbox { border: 1px solid var(--line); border-left: 2px solid var(--brass); border-radius: 8px; padding: 24px; background: var(--surface); }
+  .sbox h3 { font-family: var(--mono); font-size: 15px; font-weight: 600; letter-spacing:.02em; }
+  .sbox p { color: var(--ink-dim); font-size: 16px; margin-top: 10px; }
+  .verify { margin-top: 28px; }
+
+  /* quickstart */
+  .qs { background: linear-gradient(180deg,var(--surface),var(--bg-2)); border: 1px solid var(--line-2); border-radius: 10px; overflow: hidden; }
+  .qs pre { font-family: var(--code); font-size: 13.5px; line-height: 1.85; padding: 26px 26px; overflow-x: auto; }
+
+  /* docs cards */
+  .docs { display: grid; grid-template-columns: repeat(3,1fr); gap: 20px; }
+  @media (max-width: 860px){ .docs { grid-template-columns: 1fr; } }
+  .doccard { display:block; border: 1px solid var(--line); border-radius: 9px; padding: 26px; background: var(--surface); transition: .22s; }
+  .doccard:hover { border-color: var(--brass); transform: translateY(-3px); background: var(--surface-2); }
+  .doccard .k { font-family: var(--mono); font-size: 12px; color: var(--brass); letter-spacing: .14em; text-transform: uppercase; }
+  .doccard h3 { font-family: var(--mono); font-size: 18px; margin-top: 12px; color: var(--ink); font-weight: 600; }
+  .doccard p { color: var(--ink-dim); font-size: 15.5px; margin-top: 10px; }
+  .doccard .arr { color: var(--brass); font-family: var(--mono); margin-top: 16px; display:inline-block; font-size: 14px; }
+
+  /* status note */
+  .note { margin-top: 26px; border:1px dashed var(--line-2); border-radius:8px; padding:18px 20px; color: var(--ink-dim); font-size: 15px; }
+  .note b { color: var(--ink); }
+
+  footer { border-top: 1px solid var(--line); padding: 48px 0 64px; }
+  footer .wrap { display: flex; justify-content: space-between; align-items: center; gap: 20px; flex-wrap: wrap; }
+  footer .mono { color: var(--ink-faint); font-size: 12.5px; letter-spacing: .04em; }
+  footer a { font-family: var(--mono); font-size: 12.5px; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <div class="brand"><span class="lk">⬡</span>gitsafe</div>
+    <div class="navlinks">
+      <a href="#how">How it works</a>
+      <a href="#compare">vs git-crypt</a>
+      <a href="#security">Security</a>
+      <a href="#start">Quickstart</a>
+      <a class="gh" href="https://github.com/xmonader/gitsafe">GitHub ↗</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <span class="eyebrow reveal" style="animation-delay:.05s">git-crypt · with access control</span>
+      <h1 class="title reveal" style="animation-delay:.12s">Secrets in git,<br>readable only by<br>the <span class="amp">right branch.</span></h1>
+      <p class="lede reveal" style="animation-delay:.22s">Encrypt marked files to <b>exactly the people who can read the branch</b> — enforced by a signed policy that verifies offline. No server. No vendor.</p>
+      <div class="cta reveal" style="animation-delay:.30s">
+        <a class="btn btn-primary" href="#start">Get started</a>
+        <a class="btn btn-ghost" href="https://github.com/xmonader/gitsafe">Read the code ↗</a>
+      </div>
+      <div class="install reveal" style="animation-delay:.38s">
+        <code id="inst"><span class="sigil">$</span> git clone github.com/xmonader/gitsafe &amp;&amp; cd gitsafe &amp;&amp; make build</code>
+        <button onclick="copyInstall(this)">COPY</button>
+      </div>
+    </div>
+
+    <div class="term reveal" style="animation-delay:.34s" aria-hidden="true">
+      <div class="term-bar">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <span class="t">~/app — main</span>
+      </div>
+      <div class="term-body">
+        <span class="ln"><span class="c-pr">$</span> <span class="c-cmd">echo "DB_PASSWORD=hunter2" &gt; .env</span></span>
+        <span class="ln"><span class="c-pr">$</span> <span class="c-cmd">git add .env</span>  <span class="c-dim"># clean filter encrypts</span></span>
+        <div class="blk ct">
+          <span class="tag">stored in git — ciphertext</span>
+          <span class="ln c-ct">\x00gitsafe\x00{"v":1,"recipients":["age1q…"]}</span>
+          <span class="ln c-ct">YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0&gt; WDI1NTE5</span>
+          <span class="ln c-ct">5r2Hk0v9b1Qd…Tq8c2pZ7mC1aXw3fL0nKpE=</span>
+        </div>
+        <span class="ln" style="margin-top:14px"><span class="c-pr">$</span> <span class="c-cmd">cat .env</span>  <span class="c-dim"># you, with read access</span></span>
+        <span class="ln c-key">DB_PASSWORD=hunter2</span>
+        <span class="ln" style="margin-top:6px"><span class="c-dim"># teammate without access sees:</span></span>
+        <span class="ln c-lock">#gitsafe-locked-placeholder v1</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section id="problem">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">The gap</span>
+      <h2>Every existing option makes you choose.</h2>
+      <p>Keep secrets near your code and you trade away access control, rotation, or your independence from a vendor.</p>
+    </div>
+    <div class="cards3">
+      <div class="card">
+        <h3><span class="x">✕</span>git-crypt</h3>
+        <p>Encrypts marked files, but the access list is “whoever has a key in the repo.” No notion of who can read which branch, no rotation, no portable audit of grants.</p>
+      </div>
+      <div class="card">
+        <h3><span class="x">✕</span>SOPS</h3>
+        <p>Encrypts values to recipients you maintain by hand in <span class="code">.sops.yaml</span>. No branch-scoped access, no verifiable history of who was granted what.</p>
+      </div>
+      <div class="card">
+        <h3><span class="x">✕</span>Vault / Doppler</h3>
+        <p>Strong — but they pull secrets <em>out</em> of the repo into a SaaS. You swap “secret in git” for a hard dependency, and the policy lives in their database, not with your code.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">The wedge</span>
+      <h2>Recipients are derived from who can read the branch.</h2>
+      <p>Grant someone read access to <span class="code">staging</span> and they can decrypt <span class="code">staging</span>’s secrets. You never maintain two lists. Revoke them and <span class="code">rotate</span> re-encrypts to the new reader set.</p>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <span class="num">01 / MARK</span>
+        <h3>Mark the secrets</h3>
+        <p>Paths in <code>.gitattributes</code> (<code>.env</code>, <code>*.pem</code>, <code>secrets/**</code>) get the gitsafe filter — committed, so they travel with the repo.</p>
+      </div>
+      <div class="step">
+        <span class="num">02 / CLEAN</span>
+        <h3>Encrypt on add</h3>
+        <p>The clean filter verifies the signed policy, resolves the current branch’s readers, and encrypts with <a href="https://age-encryption.org">age</a> to exactly those keys.</p>
+      </div>
+      <div class="step">
+        <span class="num">03 / SMUDGE</span>
+        <h3>Decrypt on checkout</h3>
+        <p>Authorized identities get plaintext. Everyone else gets a clear locked placeholder — the checkout never breaks, the secret never leaks.</p>
+      </div>
+    </div>
+
+    <div class="sec-head" style="margin-top:64px;margin-bottom:28px">
+      <h2 style="font-size:clamp(22px,2.6vw,28px)">Same file. Two truths.</h2>
+    </div>
+    <div class="views">
+      <div class="view read">
+        <div class="vh">◆ alice — granted read on this branch</div>
+        <pre>$ cat secrets/prod.env
+STRIPE_KEY=sk_live_9f2a…c71
+DATABASE_URL=postgres://…
+JWT_SECRET=Hx9-…</pre>
+      </div>
+      <div class="view noread">
+        <div class="vh">⬡ bob — no read access here</div>
+<pre>$ cat secrets/prod.env
+#gitsafe-locked-placeholder v1
+# gitsafe-encrypted; you do not have
+# read access on this branch.
+# Ask an admin, then re-checkout.</pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="compare">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">The comparison</span>
+      <h2>Two columns nobody else fills.</h2>
+      <p>Branch-scoped access and a portable, signed policy — the entire reason gitsafe exists.</p>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Tool</th>
+            <th class="c">Encrypts in git</th>
+            <th class="c">Branch-scoped</th>
+            <th class="c">Signed policy</th>
+            <th class="c">Rotation</th>
+            <th class="c">Vendor-free</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><th>git-crypt</th><td class="c yes">✓</td><td class="c no">✕</td><td class="c no">✕</td><td class="c no">✕</td><td class="c yes">✓</td></tr>
+          <tr><th>SOPS</th><td class="c yes">✓</td><td class="c no">✕</td><td class="c no">✕</td><td class="c meh">manual</td><td class="c yes">✓</td></tr>
+          <tr><th>sealed-secrets</th><td class="c meh">k8s only</td><td class="c no">✕</td><td class="c no">✕</td><td class="c meh">partial</td><td class="c yes">✓</td></tr>
+          <tr><th>Vault / Doppler</th><td class="c no">✕</td><td class="c meh">partial</td><td class="c no">✕</td><td class="c yes">✓</td><td class="c no">✕</td></tr>
+          <tr class="me"><th>gitsafe</th><td class="c yes">✓</td><td class="c yes">✓</td><td class="c yes">✓</td><td class="c yes">✓</td><td class="c yes">✓</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="security">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">The guarantees</span>
+      <h2>Verified before trusted.</h2>
+      <p>The encrypt path refuses to act on a policy it can’t verify — so you can’t be tricked into encrypting a secret to an attacker’s key.</p>
+    </div>
+    <div class="sec-grid">
+      <div class="sbox">
+        <h3>Signed, chained policy</h3>
+        <p>Keyring and grants live as an ed25519-signed object chain committed in the repo. Every version is signed by an admin and links to its parent by hash — tamper with any of it and verification fails.</p>
+      </div>
+      <div class="sbox">
+        <h3>Offline trust anchor</h3>
+        <p>Each clone pins the policy root (TOFU, like SSH <span class="code">known_hosts</span>). A wholesale root replacement — which would otherwise verify as consistent — is detected and refused.</p>
+      </div>
+      <div class="sbox">
+        <h3>Private keys stay out</h3>
+        <p>Identities live in <span class="code">~/.config/gitsafe</span> and never enter the repo. The policy carries only public keys.</p>
+      </div>
+      <div class="sbox">
+        <h3>No false confidence</h3>
+        <p>Tested with unit, fuzz, race, and real-git end-to-end suites — and the <a href="https://github.com/xmonader/gitsafe/blob/main/docs/threat-model.md">threat model</a> states exactly what is and isn’t protected, including read-after-revocation.</p>
+      </div>
+    </div>
+    <div class="term verify">
+      <div class="term-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="t">offline verification</span></div>
+      <div class="term-body">
+        <span class="ln"><span class="c-pr">$</span> <span class="c-cmd">gitsafe policy verify</span></span>
+        <span class="ln c-dim">Policy chain valid: 7 version(s), head 0e7bcb867859</span>
+        <span class="ln c-dim">Root fingerprint:  a9c54ec928a3eefe1d26d62283999f9e6e34e04…</span>
+        <span class="ln c-key">Trust:             pinned and matches ✓</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="start">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">Quickstart</span>
+      <h2>Protect your first secret in four lines.</h2>
+    </div>
+    <div class="qs">
+<pre><span class="c-pr">$</span> <span class="c-cmd">gitsafe key gen</span>                 <span class="c-dim"># one-time: your private identity</span>
+<span class="c-pr">$</span> <span class="c-cmd">gitsafe init --user alice</span>       <span class="c-dim"># wire filters + bootstrap policy</span>
+<span class="c-pr">$</span> <span class="c-cmd">echo "API_KEY=sk-live-…" &gt; .env</span>
+<span class="c-pr">$</span> <span class="c-cmd">git add .env &amp;&amp; git commit -m "encrypt secret"</span>
+
+<span class="c-dim"># add a teammate, branch-scoped:</span>
+<span class="c-pr">$</span> <span class="c-cmd">gitsafe member add bob --sign &lt;hex&gt; --enc age1…</span>
+<span class="c-pr">$</span> <span class="c-cmd">gitsafe grant bob read staging</span>
+<span class="c-pr">$</span> <span class="c-cmd">gitsafe rotate</span>                   <span class="c-key"># re-encrypt to the new reader set</span></pre>
+    </div>
+    <div class="note">
+      <b>Status — v0.1, hardened core.</b> CLI, clean/smudge filters, signed policy chain, branch-scoped recipients, root-pinned offline verification, and rotation are implemented and covered by unit, fuzz, race, and real-git end-to-end tests. Not yet externally audited.
+    </div>
+  </div>
+</section>
+
+<section id="docs">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">Read further</span>
+      <h2>Documentation.</h2>
+    </div>
+    <div class="docs">
+      <a class="doccard" href="https://github.com/xmonader/gitsafe/blob/main/docs/tutorial.md">
+        <span class="k">Tutorial</span>
+        <h3>Learn by doing</h3>
+        <p>Eight real workflows: first secret, onboarding, branch-scoped access, cloning, offboarding, CI, auditing.</p>
+        <span class="arr">→</span>
+      </a>
+      <a class="doccard" href="https://github.com/xmonader/gitsafe/blob/main/docs/userguide.md">
+        <span class="k">User Guide</span>
+        <h3>The reference</h3>
+        <p>Concepts, on-disk layout, the policy and trust models, the full command reference, and troubleshooting.</p>
+        <span class="arr">→</span>
+      </a>
+      <a class="doccard" href="https://github.com/xmonader/gitsafe/blob/main/docs/threat-model.md">
+        <span class="k">Threat Model</span>
+        <h3>What it defends</h3>
+        <p>Assets, trust boundaries, adversaries, residual risks, and where each guarantee is enforced in code.</p>
+        <span class="arr">→</span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span class="mono">gitsafe — git-crypt with access control. Built on age + ed25519.</span>
+    <span class="mono"><a href="https://github.com/xmonader/gitsafe">github.com/xmonader/gitsafe</a></span>
+  </div>
+</footer>
+
+<script>
+  function copyInstall(btn){
+    var txt = "git clone github.com/xmonader/gitsafe && cd gitsafe && make build";
+    navigator.clipboard.writeText(txt).then(function(){
+      var old = btn.textContent; btn.textContent = "COPIED"; btn.style.color = "var(--green)";
+      setTimeout(function(){ btn.textContent = old; btn.style.color = ""; }, 1400);
+    });
+  }
+</script>
+</body>
+</html>
