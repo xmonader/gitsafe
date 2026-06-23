@@ -427,6 +427,122 @@ func TestMergeDriver(t *testing.T) {
 	}
 }
 
+// TestOnboardGroupsAuditCheck exercises the convenience and audit commands end
+// to end against real git: onboard (add+grant+rotate in one step), group
+// management, the audit history, and the pre-commit plaintext-leak check.
+func TestOnboardGroupsAuditCheck(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	binDir := t.TempDir()
+	bin := filepath.Join(binDir, "gitsafe")
+	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
+		t.Fatalf("build gitsafe: %v\n%s", err, out)
+	}
+
+	repo := t.TempDir()
+	aliceID := filepath.Join(t.TempDir(), "alice")
+	bobID := filepath.Join(t.TempDir(), "bob")
+	carolID := filepath.Join(t.TempDir(), "carol")
+
+	env := func(idPath string) []string {
+		return append(append([]string{}, os.Environ()...),
+			"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+			"GITSAFE_IDENTITY="+idPath,
+			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@e",
+			"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@e",
+		)
+	}
+	run := func(t *testing.T, idPath, name string, args ...string) string {
+		t.Helper()
+		cmd := exec.Command(name, args...)
+		cmd.Dir = repo
+		cmd.Env = env(idPath)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("%s %s: %v\n%s", name, strings.Join(args, " "), err, out)
+		}
+		return string(out)
+	}
+	tryRun := func(idPath, name string, args ...string) (string, error) {
+		cmd := exec.Command(name, args...)
+		cmd.Dir = repo
+		cmd.Env = env(idPath)
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
+	gitsafe := func(t *testing.T, idPath string, args ...string) string {
+		return run(t, idPath, bin, args...)
+	}
+
+	// Setup: alice founder, a base secret on main.
+	run(t, aliceID, "git", "init", "-b", "main")
+	gitsafe(t, aliceID, "key", "gen")
+	gitsafe(t, aliceID, "init", "--user", "alice")
+	os.WriteFile(filepath.Join(repo, ".env"), []byte("DB=secret\n"), 0o644)
+	run(t, aliceID, "git", "add", ".gitsafe", ".gitattributes", ".env")
+	run(t, aliceID, "git", "commit", "-m", "base secret")
+
+	// onboard bob on main in one step (add + grant + rotate).
+	bob := gitsafeKeyGenPub(t, gitsafe, bobID)
+	gitsafe(t, aliceID, "onboard", "bob", "main", "--sign", bob.sign, "--enc", bob.enc)
+	run(t, aliceID, "git", "add", ".gitsafe", ".env")
+	run(t, aliceID, "git", "commit", "-m", "onboard bob")
+
+	// bob can now read main's secret on checkout.
+	os.Remove(filepath.Join(repo, ".env"))
+	run(t, bobID, "git", "checkout", "--", ".env")
+	if got, _ := os.ReadFile(filepath.Join(repo, ".env")); string(got) != "DB=secret\n" {
+		t.Fatalf("after onboard, bob should read plaintext, got %q", got)
+	}
+
+	// groups: add carol to the keyring, then a "devs" group, grant it read staging.
+	carol := gitsafeKeyGenPub(t, gitsafe, carolID)
+	gitsafe(t, aliceID, "member", "add", "carol", "--sign", carol.sign, "--enc", carol.enc)
+	gitsafe(t, aliceID, "group", "add", "devs", "bob", "carol")
+	gitsafe(t, aliceID, "grant", "devs", "read", "staging")
+
+	if out := gitsafe(t, aliceID, "group", "list"); !strings.Contains(out, "devs") ||
+		!strings.Contains(out, "bob") || !strings.Contains(out, "carol") {
+		t.Fatalf("group list missing devs/bob/carol:\n%s", out)
+	}
+	// access on staging expands the group to its members.
+	access := gitsafe(t, aliceID, "access", "staging")
+	if !strings.Contains(access, "bob") || !strings.Contains(access, "carol") {
+		t.Fatalf("access staging should list group members bob+carol:\n%s", access)
+	}
+
+	// group remove drops carol.
+	gitsafe(t, aliceID, "group", "remove", "devs", "carol")
+	if out := gitsafe(t, aliceID, "access", "staging"); strings.Contains(out, "carol") {
+		t.Fatalf("after group remove, carol must not read staging:\n%s", out)
+	}
+
+	// audit: bob's access on main changed from absent to present across versions.
+	audit := gitsafe(t, aliceID, "audit", "main")
+	if !strings.Contains(audit, "bob") || !strings.Contains(audit, "changed") {
+		t.Fatalf("audit main should show bob's access change:\n%s", audit)
+	}
+
+	// check: clean state passes.
+	if out, err := tryRun(aliceID, bin, "check"); err != nil {
+		t.Fatalf("check should pass on a clean staged tree:\n%s", out)
+	}
+	// Simulate the footgun: stage a marked file (*.pem) as PLAINTEXT (filter
+	// bypassed, as in a fresh clone before init).
+	os.WriteFile(filepath.Join(repo, "leak.pem"), []byte("TOKEN=plain\n"), 0o644)
+	run(t, aliceID, "git", "-c", "filter.gitsafe.clean=cat", "add", "leak.pem")
+	stored := run(t, aliceID, "git", "cat-file", "blob", ":leak.pem")
+	if !strings.Contains(stored, "TOKEN=plain") {
+		t.Fatal("setup: leak.pem should be staged as plaintext for this check")
+	}
+	if out, err := tryRun(aliceID, bin, "check"); err == nil {
+		t.Fatalf("check must FAIL when a marked secret is staged as plaintext:\n%s", out)
+	} else if !strings.Contains(out, "leak.pem") {
+		t.Fatalf("check failure should name the leaking file:\n%s", out)
+	}
+}
+
 type pubKeys struct{ sign, enc string }
 
 // gitsafeKeyGenPub generates an identity at idPath and returns its public keys

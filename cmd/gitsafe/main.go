@@ -29,12 +29,16 @@ Usage:
 
   gitsafe member add NAME --sign HEX --enc age1...   Add a member to the keyring
   gitsafe member revoke NAME                         Revoke a member (then rotate)
+  gitsafe onboard NAME BRANCH --sign HEX --enc age1...  Add + grant read + rotate, in one step
+  gitsafe group add|remove|list ...                  Manage named groups of members
   gitsafe grant SUBJECT VERB RESOURCE                Grant read|write|admin
   gitsafe revoke SUBJECT VERB RESOURCE               Remove matching grant(s)
   gitsafe rotate                                     Re-encrypt secrets to current readers
 
   gitsafe trust [--fingerprint HEX] [--force]        Pin this clone to the policy root (TOFU)
   gitsafe access RESOURCE          Show who can decrypt secrets on a branch/ref
+  gitsafe audit [RESOURCE]         Show how access changed across policy versions
+  gitsafe check                    Fail if a marked secret is staged as plaintext (pre-commit hook)
   gitsafe whoami                   Show your identity and policy membership
   gitsafe policy show             Show the current policy
   gitsafe policy verify           Verify the signed policy chain offline
@@ -71,6 +75,10 @@ func main() {
 		err = cmdMerge(args)
 	case "member":
 		err = cmdMember(args)
+	case "onboard":
+		err = cmdOnboard(args)
+	case "group":
+		err = cmdGroup(args)
 	case "grant":
 		err = cmdGrant(args)
 	case "revoke":
@@ -81,6 +89,10 @@ func main() {
 		err = cmdTrust(args)
 	case "access":
 		err = cmdAccess(args)
+	case "audit":
+		err = cmdAudit(args)
+	case "check":
+		err = cmdCheck(args)
 	case "whoami":
 		err = cmdWhoami(args)
 	case "policy":

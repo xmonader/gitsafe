@@ -329,6 +329,18 @@ func policyShow(rc *repoCtx) error {
 		fmt.Printf("  %-16s %-8s %s\n", n, m.Status, m.Enc)
 	}
 
+	if len(p.Groups) > 0 {
+		fmt.Println("\ngroups:")
+		gnames := make([]string, 0, len(p.Groups))
+		for g := range p.Groups {
+			gnames = append(gnames, g)
+		}
+		sort.Strings(gnames)
+		for _, g := range gnames {
+			fmt.Printf("  %-16s %s\n", g, join(append([]string{}, p.Groups[g]...)))
+		}
+	}
+
 	fmt.Println("\ngrants:")
 	for _, g := range p.Grants {
 		fmt.Printf("  %-12s %-6s %s\n", g.Subject, g.Verb, g.Resource)

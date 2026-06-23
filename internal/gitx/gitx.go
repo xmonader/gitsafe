@@ -161,6 +161,20 @@ func StagedChanges() ([]string, error) {
 	return strings.Split(out, "\n"), nil
 }
 
+// StagedFiles returns the paths added/copied/modified in the index relative to
+// HEAD — the set about to be committed. Used by 'gitsafe check' to verify no
+// marked secret is staged as plaintext.
+func StagedFiles() ([]string, error) {
+	out, err := runStr("diff", "--cached", "--name-only", "--diff-filter=ACM")
+	if err != nil {
+		return nil, err
+	}
+	if out == "" {
+		return nil, nil
+	}
+	return strings.Split(out, "\n"), nil
+}
+
 // AddRenormalize re-applies the clean filter to the given paths and stages the
 // result. With changed recipients this re-encrypts secrets to the new reader
 // set; the new ciphertext is just a normal staged blob.

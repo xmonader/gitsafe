@@ -91,6 +91,41 @@ func TestMemberAddGrantAndRecipients(t *testing.T) {
 	}
 }
 
+func TestChainOrdersRootToHead(t *testing.T) {
+	s := newStore(t)
+	alice := newActor(t, "alice")
+	bob := newActor(t, "bob")
+	Bootstrap(s, alice.name, alice.signPub, alice.enc, alice.priv)
+	s.Mutate(alice.name, alice.priv, func(p *Policy) error {
+		p.Keyring["bob"] = Member{Sign: bob.signPub, Enc: bob.enc, Status: "active"}
+		return nil
+	})
+	s.Mutate(alice.name, alice.priv, func(p *Policy) error {
+		p.Grants = append(p.Grants, Grant{ID: "g", Subject: "bob", Verb: Read, Resource: "refs/heads/main"})
+		return nil
+	})
+
+	chain, err := s.Chain()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chain) != 3 {
+		t.Fatalf("Chain len = %d, want 3", len(chain))
+	}
+	for i, p := range chain {
+		if p.Version != i {
+			t.Fatalf("chain[%d].Version = %d, want %d (root-first order)", i, p.Version, i)
+		}
+	}
+	// Access for bob on main appears only at the last version.
+	if got := chain[0].ReaderNames("refs/heads/main"); hasStr(got, "bob") {
+		t.Error("bob should not read main at v0")
+	}
+	if got := chain[2].ReaderNames("refs/heads/main"); !hasStr(got, "bob") {
+		t.Error("bob should read main at head")
+	}
+}
+
 func TestNonAdminCannotMutate(t *testing.T) {
 	s := newStore(t)
 	alice := newActor(t, "alice")

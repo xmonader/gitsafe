@@ -98,6 +98,58 @@ func cmdWhoami(args []string) error {
 	return nil
 }
 
+// cmdAudit reports how access evolved across the signed policy chain — the
+// "who could read what, and when did it change" query compliance reviewers ask.
+// With a RESOURCE it shows the reader set of that branch at every version,
+// flagging the versions where it changed. Without one it prints the grant
+// history version-by-version.
+func cmdAudit(args []string) error {
+	if len(args) > 1 {
+		return fmt.Errorf("usage: gitsafe audit [RESOURCE]")
+	}
+	rc, err := loadRepo()
+	if err != nil {
+		return err
+	}
+	chain, err := rc.store.Chain()
+	if err != nil {
+		return err
+	}
+	if len(chain) == 0 {
+		fmt.Println("No policy in this repo.")
+		return nil
+	}
+
+	if len(args) == 1 {
+		res := resource(args[0])
+		fmt.Printf("access history for %s\n", res)
+		prev := "\x00" // sentinel so v0 always prints
+		for _, p := range chain {
+			cur := join(p.ReaderNames(res))
+			if cur == "" {
+				cur = "(none)"
+			}
+			marker := ""
+			if cur != prev {
+				marker = "  <- changed"
+			}
+			fmt.Printf("  v%-3d by %-14s %s%s\n", p.Version, p.Signer, cur, marker)
+			prev = cur
+		}
+		return nil
+	}
+
+	fmt.Println("policy change history (root -> head):")
+	for _, p := range chain {
+		fmt.Printf("  v%d  signed by %-14s  %d member(s), %d grant(s)\n",
+			p.Version, p.Signer, len(p.Keyring), len(p.Grants))
+		for _, g := range p.Grants {
+			fmt.Printf("      %-12s %-6s %s\n", g.Subject, g.Verb, g.Resource)
+		}
+	}
+	return nil
+}
+
 func join(xs []string) string {
 	sort.Strings(xs)
 	out := ""

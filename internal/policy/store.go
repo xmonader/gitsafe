@@ -195,6 +195,31 @@ func clone(p *Policy) Policy {
 	return out
 }
 
+// Chain returns every policy version ordered root-first (index 0) to head
+// (last), or nil if the repo has no policy. It does not verify signatures —
+// callers that need trust must verify separately; this is for read-only
+// inspection such as auditing how access changed over time.
+func (s *Store) Chain() ([]*Policy, error) {
+	head, err := s.head()
+	if err != nil || head == "" {
+		return nil, err
+	}
+	var chain []*Policy
+	h := head
+	for h != "" {
+		p, err := s.loadObject(h)
+		if err != nil {
+			return nil, err
+		}
+		chain = append(chain, p)
+		h = p.Parent
+	}
+	for i, j := 0, len(chain)-1; i < j; i, j = i+1, j-1 {
+		chain[i], chain[j] = chain[j], chain[i]
+	}
+	return chain, nil
+}
+
 // VerifyChain walks the chain from head to root, verifying every version's
 // signature and authority and that parent hashes link correctly. Returns the
 // number of versions.
