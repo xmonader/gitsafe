@@ -46,8 +46,8 @@ func cmdOnboard(args []string) error {
 	}
 	name, branch := positional[0], positional[1]
 	res := resource(branch)
-	if sign == "" || enc == "" {
-		return fmt.Errorf("both --sign and --enc are required (get them from the teammate's 'gitsafe key show')")
+	if enc == "" {
+		return fmt.Errorf("--enc is required (the teammate's age key from their 'gitsafe key show')")
 	}
 	if err := validateMemberKeys(sign, enc); err != nil {
 		return err
@@ -63,10 +63,18 @@ func cmdOnboard(args []string) error {
 	}
 	gid := grantID(name, policy.Read, res)
 	_, err = rc.store.Mutate(who, priv, func(p *policy.Policy) error {
-		if _, exists := p.Keyring[name]; exists && !update {
+		existing, exists := p.Keyring[name]
+		if exists && !update {
 			return fmt.Errorf("member %q already exists; pass --update to replace their keys", name)
 		}
-		p.Keyring[name] = policy.Member{Sign: sign, Enc: enc, Status: "active"}
+		m := policy.Member{Enc: enc, Sign: sign, Status: "active"}
+		if exists {
+			if sign == "" {
+				m.Sign = existing.Sign
+			}
+			m.Status = existing.Status
+		}
+		p.Keyring[name] = m
 		for _, g := range p.Grants {
 			if g.ID == gid {
 				return nil // already granted; member add still applied

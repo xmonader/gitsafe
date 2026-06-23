@@ -44,7 +44,7 @@ func cmdMember(args []string) error {
 
 func memberAdd(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: gitsafe member add NAME --sign HEX --enc age1... [--update]")
+		return fmt.Errorf("usage: gitsafe member add NAME --enc age1... [--sign HEX] [--update]")
 	}
 	name := args[0]
 	var sign, enc string
@@ -69,8 +69,8 @@ func memberAdd(args []string) error {
 			return fmt.Errorf("unknown flag %q", args[i])
 		}
 	}
-	if sign == "" || enc == "" {
-		return fmt.Errorf("both --sign and --enc are required")
+	if enc == "" {
+		return fmt.Errorf("--enc is required (the teammate's age key from 'gitsafe key show')")
 	}
 	if err := validateMemberKeys(sign, enc); err != nil {
 		return err
@@ -84,10 +84,21 @@ func memberAdd(args []string) error {
 		return err
 	}
 	_, err = rc.store.Mutate(who, priv, func(p *policy.Policy) error {
-		if _, exists := p.Keyring[name]; exists && !update {
+		existing, exists := p.Keyring[name]
+		if exists && !update {
 			return fmt.Errorf("member %q already exists; pass --update to replace their keys (e.g. after a key rotation)", name)
 		}
-		p.Keyring[name] = policy.Member{Sign: sign, Enc: enc, Status: "active"}
+		m := policy.Member{Enc: enc, Sign: sign, Status: "active"}
+		if exists {
+			// On update, preserve the existing sign key and status unless a new
+			// sign key is supplied — so updating an admin's enc key alone doesn't
+			// silently strip their ability to sign or un-revoke them.
+			if sign == "" {
+				m.Sign = existing.Sign
+			}
+			m.Status = existing.Status
+		}
+		p.Keyring[name] = m
 		return nil
 	})
 	if err != nil {
@@ -103,13 +114,17 @@ func memberAdd(args []string) error {
 
 // validateMemberKeys rejects obviously malformed public keys before they enter
 // the signed keyring, where a typo would silently produce undecryptable secrets.
+// The sign key is optional (only signers/admins need one), so it is validated
+// only when provided.
 func validateMemberKeys(signHex, enc string) error {
-	raw, err := hex.DecodeString(signHex)
-	if err != nil || len(raw) != ed25519.PublicKeySize {
-		return fmt.Errorf("--sign must be a %d-byte ed25519 public key in hex", ed25519.PublicKeySize)
-	}
 	if _, err := age.ParseX25519Recipient(enc); err != nil {
 		return fmt.Errorf("--enc must be a valid age recipient (age1...): %w", err)
+	}
+	if signHex != "" {
+		raw, err := hex.DecodeString(signHex)
+		if err != nil || len(raw) != ed25519.PublicKeySize {
+			return fmt.Errorf("--sign must be a %d-byte ed25519 public key in hex", ed25519.PublicKeySize)
+		}
 	}
 	return nil
 }
@@ -178,6 +193,16 @@ func cmdGrant(args []string) error {
 		return err
 	}
 	fmt.Printf("Granted %s %s on %s.\n", subject, verb, res)
+	// Admin authority is only usable with a signing key. Warn if we just made
+	// someone an admin who has none yet (a read-only member added with --enc only).
+	if verb == policy.Admin {
+		if pol, _ := rc.store.Load(); pol != nil {
+			if m, ok := pol.Keyring[subject]; ok && m.Sign == "" {
+				fmt.Printf("Note: %q has no signing key, so they can't change policy yet.\n"+
+					"  Have them run 'gitsafe key show', then: gitsafe member add %s --update --sign <hex>\n", subject, subject)
+			}
+		}
+	}
 	return nil
 }
 

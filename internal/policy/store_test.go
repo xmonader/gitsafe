@@ -126,6 +126,25 @@ func TestChainOrdersRootToHead(t *testing.T) {
 	}
 }
 
+func TestReaderWithoutSignKey(t *testing.T) {
+	s := newStore(t)
+	alice := newActor(t, "alice")
+	bob := newActor(t, "bob")
+	Bootstrap(s, alice.name, alice.signPub, alice.enc, alice.priv)
+	// Add bob as a read-only member with NO signing key — the common case.
+	_, err := s.Mutate(alice.name, alice.priv, func(p *Policy) error {
+		p.Keyring["bob"] = Member{Enc: bob.enc, Sign: "", Status: "active"}
+		p.Grants = append(p.Grants, Grant{ID: "g", Subject: "bob", Verb: Read, Resource: "refs/heads/main"})
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r, _ := RecipientsFor(s, "refs/heads/main"); !hasStr(r, bob.enc) {
+		t.Fatal("a sign-less reader must still be a recipient")
+	}
+}
+
 func TestNonAdminCannotMutate(t *testing.T) {
 	s := newStore(t)
 	alice := newActor(t, "alice")

@@ -27,9 +27,9 @@ Usage:
   gitsafe key show                Print your public keys (give these to an admin)
   gitsafe key lock                Encrypt an existing identity at rest with a passphrase
 
-  gitsafe member add NAME --sign HEX --enc age1...   Add a member to the keyring
+  gitsafe member add NAME --enc age1... [--sign HEX]   Add a member (--sign only for admins)
   gitsafe member revoke NAME                         Revoke a member (then rotate)
-  gitsafe onboard NAME BRANCH --sign HEX --enc age1...  Add + grant read + rotate, in one step
+  gitsafe onboard NAME BRANCH --enc age1... [--sign HEX]  Add + grant read + rotate, in one step
   gitsafe group add|remove|list ...                  Manage named groups of members
   gitsafe grant SUBJECT VERB RESOURCE                Grant read|write|admin
   gitsafe revoke SUBJECT VERB RESOURCE               Remove matching grant(s)

@@ -483,9 +483,10 @@ func TestOnboardGroupsAuditCheck(t *testing.T) {
 	run(t, aliceID, "git", "add", ".gitsafe", ".gitattributes", ".env")
 	run(t, aliceID, "git", "commit", "-m", "base secret")
 
-	// onboard bob on main in one step (add + grant + rotate).
+	// onboard bob on main in one step (add + grant + rotate). Read-only members
+	// need only their enc key — no --sign.
 	bob := gitsafeKeyGenPub(t, gitsafe, bobID)
-	gitsafe(t, aliceID, "onboard", "bob", "main", "--sign", bob.sign, "--enc", bob.enc)
+	gitsafe(t, aliceID, "onboard", "bob", "main", "--enc", bob.enc)
 	run(t, aliceID, "git", "add", ".gitsafe", ".env")
 	run(t, aliceID, "git", "commit", "-m", "onboard bob")
 
@@ -498,7 +499,7 @@ func TestOnboardGroupsAuditCheck(t *testing.T) {
 
 	// groups: add carol to the keyring, then a "devs" group, grant it read staging.
 	carol := gitsafeKeyGenPub(t, gitsafe, carolID)
-	gitsafe(t, aliceID, "member", "add", "carol", "--sign", carol.sign, "--enc", carol.enc)
+	gitsafe(t, aliceID, "member", "add", "carol", "--enc", carol.enc) // enc only, no sign
 	gitsafe(t, aliceID, "group", "add", "devs", "bob", "carol")
 	gitsafe(t, aliceID, "grant", "devs", "read", "staging")
 

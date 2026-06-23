@@ -93,9 +93,12 @@ func keyLock() error {
 }
 
 // printPubKeys prints the public material and a ready-to-paste member-add line.
+// The enc (age) key is all most people need; the sign key is only for admins who
+// change the policy.
 func printPubKeys(id *identity.Identity) {
-	fmt.Printf("sign (ed25519):  %s\n", id.SignPub())
-	fmt.Printf("enc  (age):      %s\n\n", id.Recipient())
-	fmt.Printf("Give these to an admin, who runs:\n")
-	fmt.Printf("  gitsafe member add <your-name> --sign %s --enc %s\n", id.SignPub(), id.Recipient())
+	fmt.Printf("enc  (age):      %s\n", id.Recipient())
+	fmt.Printf("sign (ed25519):  %s\n\n", id.SignPub())
+	fmt.Printf("Send your enc key to an admin to get read access:\n")
+	fmt.Printf("  gitsafe member add <your-name> --enc %s\n\n", id.Recipient())
+	fmt.Printf("(Only to administer the policy: they also add --sign %s)\n", id.SignPub())
 }
