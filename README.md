@@ -1,8 +1,8 @@
 # gitsafe
 
-**Keep secrets in your git repo — encrypted, readable only by the people you allow.**
+### Your `.env` in git, readable only by the right people.
 
-Commit `.env`, keys, and certs straight into git. gitsafe stores them **encrypted**, so anyone who clones without permission sees scrambled bytes. People you've granted access decrypt them automatically. No server, no cloud service.
+**git-crypt, with real access control.** Commit secrets straight into your repo — gitsafe encrypts them to exactly who can read the branch. The right people just `cat` the file; everyone else gets ciphertext. No server, no vault, no second list to keep.
 
 The twist over [git-crypt](https://github.com/AGWA/git-crypt) / [SOPS](https://github.com/getsops/sops): **who can read a branch is who can decrypt its secrets.** Grant someone read on `staging` and they can read `staging`'s secrets — one list, not two. Who's allowed is a signed file in the repo, so anyone can verify it offline.
 
