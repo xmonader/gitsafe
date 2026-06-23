@@ -9,6 +9,9 @@ build:
 test:
 	go test $(PKG)
 
+e2e:
+	go test ./cmd/gitsafe -run TestEndToEnd -v
+
 lint:
 	go vet $(PKG)
 
