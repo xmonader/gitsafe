@@ -32,9 +32,30 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 ### Changed
 - `member add` and `onboard` now require only `--enc` (the age key); `--sign`
   (ed25519) is optional and needed only for members who administer the policy.
-  Read-only teammates send a single key. Granting `admin` to a member with no
-  sign key warns how to add it; `--update` preserves an existing sign key and
-  status when not re-supplied.
+  Read-only teammates send a single key. `--update` preserves an existing sign
+  key when not re-supplied, and **reactivates** a revoked member — so it is also
+  the un-revoke path.
+- Granting `admin` to a member with no signing key is now **refused** (it would
+  be unusable) instead of merely warned.
+- Trust pin and verified-head cache files are written `0600` in a `0700`
+  directory, so another local account cannot tamper with this clone's trust
+  anchor.
+
+### Fixed
+- The policy engine refuses any change that would leave no usable admin (an
+  active member holding admin with a signing key), preventing a revoke/strip
+  from bricking the signed chain.
+- The merge driver refuses a locked placeholder as a merge input instead of
+  merging the placeholder text into the secret and re-encrypting it (which
+  destroyed the file for all readers); its decrypted temporaries are written to
+  a private `0700` directory rather than world-readable `/tmp`.
+- `gitsafe check` also flags staged files matching the policy `secret_paths`,
+  not only `.gitattributes`-marked files.
+- A stale policy lock left by a crashed process (older than 10 minutes) is
+  reclaimed instead of blocking all future mutations.
+- `format.Parse` caps the declared envelope header length (corrupt-blob guard),
+  and `?` in policy ref globs now matches a single character, consistent with
+  path globbing.
 
 ## [0.1.0] — unreleased
 

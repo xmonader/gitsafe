@@ -284,7 +284,9 @@ branch.)
 **What just happened**
 
 - `member revoke` marked Carol's keyring entry `revoked`. Revoked members are
-  never included as recipients again.
+  never included as recipients again. To bring her back later, re-add her with
+  `gitsafe member add carol --update --enc age1...` (this reactivates her), then
+  `rotate`.
 - `rotate` re-encrypted every marked file to the *current* reader set, which no
   longer includes Carol. Her key can't open the new blobs.
 

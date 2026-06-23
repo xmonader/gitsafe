@@ -382,13 +382,16 @@ guard (`.gitsafe/** -filter`) keeping policy files unencrypted.
 Add (or `--update`) a keyring member. **`--enc`** (their age recipient) is all a
 read-only member needs. **`--sign`** (their ed25519 public key) is optional and
 only required for someone who will **administer** the policy (sign changes) —
-granting `admin` to a member without a sign key warns you to add it. On
-`--update`, an existing sign key and status are preserved if not re-supplied.
-Signs a new policy version. Requires you to be an admin.
+granting `admin` to a member without a sign key is **refused** (it would be
+unusable; add the sign key first). On `--update`, an existing sign key is
+preserved if not re-supplied, and the member is **reactivated** — so re-adding a
+revoked member is the un-revoke path. Signs a new policy version. Requires admin.
 
 ### `gitsafe member revoke NAME`
 Mark a member `revoked`. They're excluded from recipients after the next
-`rotate`. Requires admin.
+`rotate`. Requires admin. To un-revoke, re-add them with `member add NAME
+--update --enc …`. You cannot revoke the last usable admin (the one with a
+signing key): gitsafe refuses the change rather than brick the policy.
 
 ### `gitsafe onboard NAME BRANCH --enc age1... [--sign HEX] [--update]`
 The one-shot teammate flow: adds (or `--update`s) the member **and** grants them
@@ -417,7 +420,9 @@ Print the defined groups and their members.
 ### `gitsafe grant SUBJECT VERB RESOURCE`
 Add a capability (`read`/`write`/`force`/`grant`/`admin`) for `SUBJECT` (a member
 name, or `*` for all members) on `RESOURCE` (a ref glob; bare branch name
-allowed). Idempotent — an identical grant is a no-op. Requires admin.
+allowed). Idempotent — an identical grant is a no-op. Granting `admin` to a
+concrete member with no signing key is refused (it would be unusable). Requires
+admin.
 
 ### `gitsafe revoke SUBJECT VERB RESOURCE`
 Remove a previously-added grant matching exactly that subject/verb/resource.
