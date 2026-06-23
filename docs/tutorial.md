@@ -30,6 +30,8 @@ cd my-project
 
 # 1. One-time on this machine: create your private identity.
 gitsafe key gen
+# Prefer to protect the key on disk? Use:  gitsafe key gen --passphrase
+# (you'll then set GITSAFE_PASSPHRASE for git's filters; see the User Guide).
 
 # 2. Wire gitsafe into this repo and become its first admin.
 gitsafe init --user alice
@@ -66,6 +68,17 @@ ciphertext. Your working tree is untouched.
 
 You committed `.gitsafe/` and `.gitattributes` so the policy and the marks
 travel with the repo.
+
+> **Safety net — block accidental plaintext.** If the filters ever aren't active
+> (a fresh clone before `init`, a teammate who skipped setup), a marked secret
+> could be committed as plaintext. Install a pre-commit hook that refuses that:
+>
+> ```bash
+> printf '#!/bin/sh\nexec gitsafe check\n' > .git/hooks/pre-commit
+> chmod +x .git/hooks/pre-commit
+> ```
+>
+> `gitsafe check` fails the commit if any marked file is staged as plaintext.
 
 ---
 
@@ -116,6 +129,17 @@ instead and simply can't decrypt.
 > rotating changes *what the ciphertext is encrypted to*. Keeping them separate
 > means you can stage several membership changes and rotate once.
 
+> **Shortcut:** when you're onboarding one person to one branch, do it in a
+> single step:
+>
+> ```bash
+> gitsafe onboard bob main --sign 3b9a...e1 --enc age1qz...k7
+> git add .gitsafe .env && git commit -m "onboard bob on main"
+> ```
+>
+> `onboard` adds Bob, grants him `read` on `main`, and rotates — atomically, so
+> you can't leave it half-done. The longhand above is worth understanding first.
+
 ---
 
 ## Scenario 3 — Different readers for different branches
@@ -163,6 +187,20 @@ never granted read there.
 > **Tip:** you can grant on globs, not just one branch:
 > `gitsafe grant bob read 'refs/heads/feature/*'` lets Bob read every
 > single-segment `feature/...` branch. Use `refs/heads/**` for all branches.
+
+> **Grant by role with groups.** Instead of granting each person, make a group
+> and grant the group:
+>
+> ```bash
+> gitsafe group add oncall bob carol      # members must already be in the keyring
+> gitsafe grant oncall read production
+> gitsafe rotate
+> git add .gitsafe && git commit -m "oncall reads production"
+> ```
+>
+> Add or remove people with `gitsafe group add|remove oncall NAME` (then
+> `rotate`); every grant to `oncall` follows automatically. `gitsafe group list`
+> shows the membership.
 
 ---
 
@@ -294,6 +332,7 @@ secret named `GITSAFE_IDENTITY_FILE`), then in your pipeline:
     gitsafe init --user ci-bot      # wire filters in the CI checkout
     gitsafe trust --fingerprint "$EXPECTED_ROOT"   # pin non-interactively
     git checkout -- .               # smudge decrypts .env for ci-bot
+    gitsafe check                   # belt-and-braces: no plaintext secret staged
   env:
     GITSAFE_IDENTITY_FILE: ${{ secrets.GITSAFE_IDENTITY_FILE }}
     EXPECTED_ROOT: a9c54ec928a3eefe1d26d62283999f9e6e34e04d7526e78d070bb352cf6de91d
@@ -367,15 +406,37 @@ gitsafe policy verify
 # Trust:             pinned and matches ✓
 ```
 
+Two more focused queries:
+
+```bash
+# Who can decrypt one branch's secrets right now?
+gitsafe access production
+# refs/heads/production
+#   readers:    alice, carol
+#   encrypts to 2 age recipient(s)
+
+# How did access to a branch change over time? (compliance question)
+gitsafe audit production
+# access history for refs/heads/production
+#   v0   by alice          alice  <- changed
+#   v5   by alice          alice, carol  <- changed
+#   v7   by alice          alice, carol
+```
+
 **What just happened**
 
-- `policy show` prints the current keyring and grants — your audit of who's a
-  member and who's granted what.
+- `policy show` prints the current keyring, groups, and grants — your audit of
+  who's a member and who's granted what.
 - `policy verify` walks the entire signed chain from head to root, checking
   every version's ed25519 signature and that each change was made by an admin,
   then reports the root fingerprint and whether it matches your local pin. A
   `MISMATCH` here means the policy root changed since you trusted it — stop and
   investigate before committing anything.
+- `gitsafe access RESOURCE` answers "who can read this **now**," expanding
+  groups, admins, and public grants to concrete active members.
+- `gitsafe audit RESOURCE` replays the signed chain and shows the reader set at
+  every version, flagging where it changed — "who could read this, and when did
+  it change." Without a resource it prints the full grant history.
 
 ---
 

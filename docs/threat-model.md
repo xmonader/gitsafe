@@ -8,7 +8,9 @@ does not protect. Written to be attacked: if a claim here is false, that's a bug
 1. **Secret plaintext** — the contents of marked files (`.env`, keys, …).
 2. **The access policy** — who may read which branch; an integrity asset (it must
    not be forgeable), not a confidentiality asset (it holds only public keys).
-3. **Private identities** — each user's age + ed25519 private keys.
+3. **Private identities** — each user's age + ed25519 private keys. Stored
+   outside the repo (`~/.config/gitsafe/`), and optionally encrypted at rest with
+   a passphrase (`gitsafe key gen --passphrase` / `gitsafe key lock`).
 
 ## Cryptographic primitives
 
@@ -25,7 +27,7 @@ does not protect. Written to be attacked: if a claim here is false, that's a bug
 |---|---|---|
 | Repository **contents** (`.gitsafe/policy/`, `.gitattributes`, blobs) | anyone who can commit/merge/push | **Untrusted.** Verified before use. |
 | Your **local `.git/`** (filter config, trust pin, verified cache) | the local user/OS account | **Trusted.** Compromise here is out of scope. |
-| **Private identity** file (`~/.config/gitsafe/`) | the local user/OS account | **Trusted.** Its secrecy is assumed. |
+| **Private identity** file (`~/.config/gitsafe/`) | the local user/OS account | **Trusted.** Its secrecy is assumed; passphrase-encryption at rest reduces exposure if the file alone leaks. |
 | The **transport** (git remote, hosting) | the git host / network | **Untrusted** for integrity; trusted for availability only. |
 
 The central design choice: a repository **cannot vouch for its own
@@ -64,7 +66,9 @@ Was a reader, then revoked.
 ## Assumptions
 
 1. Your OS account and local `.git/` are not compromised.
-2. Your private identity file stays secret.
+2. Your private identity file stays secret. Encrypting it at rest with a
+   passphrase narrows this: a leaked *file* is not enough without the passphrase
+   (which then must be supplied via `GITSAFE_PASSPHRASE` for the git filters).
 3. The **first** `gitsafe trust` pins the *intended* root — i.e. you verify the
    fingerprint out-of-band, or accept TOFU's first-contact risk (R2).
 4. The age and ed25519 implementations are correct.
@@ -91,7 +95,15 @@ Was a reader, then revoked.
   envelope header), and the policy (members, grants) are intentionally cleartext.
   gitsafe protects secret *contents*, not the existence or shape of secrets.
 - **R6 — Ciphertext merge.** Concurrent edits to one secret on two branches
-  produce unmergeable blobs; manual decrypt-merge-reencrypt is required.
+  produce blobs git cannot 3-way merge directly. gitsafe's merge driver
+  (`gitsafe merge`, wired by `init`) decrypts, merges the plaintexts, and
+  re-encrypts — but it can only run for someone who can **read** the secret; a
+  non-reader's merge is refused rather than mangling data.
+- **R8 — Accidental plaintext commit.** If the filters are not active (a fresh
+  clone before `init`, an unpinned clone, a misconfigured CI runner), a marked
+  secret can be staged as plaintext. **Mitigation: `gitsafe check`** as a
+  pre-commit hook fails the commit in that case (see the User Guide). It is a
+  safety net, not a guarantee — a determined user can bypass any local hook.
 - **R7 — Post-quantum.** X25519/Ed25519 are not post-quantum secure. A
   harvest-now-decrypt-later adversary against far-future quantum hardware is not
   addressed.
@@ -110,4 +122,4 @@ Was a reader, then revoked.
 ## Reporting
 
 Found a way to break a claim above? That's a security bug — please report it
-privately before disclosure.
+privately before disclosure, following [`SECURITY.md`](../SECURITY.md).
