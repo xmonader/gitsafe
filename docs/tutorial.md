@@ -85,23 +85,23 @@ travel with the repo.
 ## Scenario 2 — Give a teammate read access
 
 **Goal:** let Bob decrypt the secrets on `main`. Bob never sends you a private
-key; he sends you two **public** strings.
+key; he sends you one **public** string — his `enc` (age) key.
 
 **Bob, on his machine:**
 
 ```bash
 gitsafe key gen
 gitsafe key show
-# sign (ed25519):  3b9a...e1
-# enc  (age):      age1qz...k7
+# enc  (age):      age1qz...k7      <- this is the one to send
+# sign (ed25519):  3b9a...e1        (only needed if he'll administer the policy)
 ```
 
-Bob sends you those two lines (Slack, email, carrier pigeon — they're public).
+Bob sends you his `enc` line (Slack, email, carrier pigeon — it's public).
 
 **You (an admin), in the repo:**
 
 ```bash
-gitsafe member add bob --sign 3b9a...e1 --enc age1qz...k7
+gitsafe member add bob --enc age1qz...k7
 gitsafe grant bob read main          # bare name => refs/heads/main
 gitsafe rotate                       # re-encrypt secrets to include bob
 git add .gitsafe .env
@@ -109,13 +109,17 @@ git commit -m "grant bob read on main"
 git push
 ```
 
+> A read-only teammate needs only their `enc` key. The `sign` key is for admins
+> who *change* the policy — add it with `--sign <hex>` (and grant `admin`) when
+> you're promoting someone.
+
 After Bob pulls and sets up his clone (see [Scenario 4](#scenario-4--join-a-project-someone-else-set-up)),
 `cat .env` gives him plaintext. Anyone *not* granted sees a locked placeholder
 instead and simply can't decrypt.
 
 **What just happened**
 
-- `member add` appended Bob's public keys to the signed keyring as a new policy
+- `member add` appended Bob's public key to the signed keyring as a new policy
   version (signed by you).
 - `grant bob read main` added a capability: Bob may read `refs/heads/main`.
 - `rotate` re-ran the clean filter over every marked file so the stored
@@ -133,7 +137,7 @@ instead and simply can't decrypt.
 > single step:
 >
 > ```bash
-> gitsafe onboard bob main --sign 3b9a...e1 --enc age1qz...k7
+> gitsafe onboard bob main --enc age1qz...k7
 > git add .gitsafe .env && git commit -m "onboard bob on main"
 > ```
 >
@@ -307,14 +311,13 @@ secret):
 ```bash
 GITSAFE_IDENTITY=./ci-identity gitsafe key gen
 GITSAFE_IDENTITY=./ci-identity gitsafe key show
-# sign (ed25519):  7c12...aa
 # enc  (age):      age1ci...zz
 ```
 
-**Add CI as a read-only member and rotate:**
+**Add CI as a read-only member and rotate** (read-only, so just the enc key):
 
 ```bash
-gitsafe member add ci-bot --sign 7c12...aa --enc age1ci...zz
+gitsafe member add ci-bot --enc age1ci...zz
 gitsafe grant ci-bot read main
 gitsafe rotate
 git add .gitsafe .env && git commit -m "grant ci-bot read on main"

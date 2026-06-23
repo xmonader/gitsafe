@@ -17,13 +17,13 @@ git cat-file blob HEAD:.env     # what git stored  -> encrypted
 cat .env                        # your working copy -> the real password
 ```
 
-Add a teammate (they send you their public keys from `gitsafe key show`):
+Add a teammate (they send you the one key from `gitsafe key show`):
 
 ```bash
-gitsafe onboard bob staging --sign <hex> --enc age1...
+gitsafe onboard bob staging --enc age1...
 ```
 
-That's add + grant-read + re-encrypt in one step. Now bob reads `staging`'s secrets; anyone without access sees a locked placeholder.
+That's add + grant-read + re-encrypt in one step. Now bob reads `staging`'s secrets; anyone without access sees a locked placeholder. (Only admins who change the policy need a second `--sign` key.)
 
 ## Install
 

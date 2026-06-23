@@ -451,7 +451,7 @@ JWT_SECRET=Hx9-…</pre>
 <span class="c-pr">$</span> <span class="c-cmd">git add .env &amp;&amp; git commit -m "add a secret"</span>
 
 <span class="c-dim"># give a teammate access to one branch — add, grant, and rotate in one step:</span>
-<span class="c-pr">$</span> <span class="c-cmd">gitsafe onboard bob staging --sign &lt;hex&gt; --enc age1…</span>  <span class="c-key"># bob can now read staging</span></pre>
+<span class="c-pr">$</span> <span class="c-cmd">gitsafe onboard bob staging --enc age1…</span>  <span class="c-key"># bob can now read staging</span></pre>
     </div>
     <div class="note">
       <b>Status — v0.1, working core.</b> Everything here works and is covered by automated tests on every change — including groups, an encrypted-file merge driver, passphrase-locked keys, and an access-history audit. Not yet independently security-audited.

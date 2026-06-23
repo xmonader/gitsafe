@@ -29,6 +29,13 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - `gitsafe check` — fail if a marked secret is staged as plaintext; documented as
   a pre-commit hook, with a CI trust-pinning guide in the User Guide.
 
+### Changed
+- `member add` and `onboard` now require only `--enc` (the age key); `--sign`
+  (ed25519) is optional and needed only for members who administer the policy.
+  Read-only teammates send a single key. Granting `admin` to a member with no
+  sign key warns how to add it; `--update` preserves an existing sign key and
+  status when not re-supplied.
+
 ## [0.1.0] — unreleased
 
 First working core.

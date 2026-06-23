@@ -136,10 +136,10 @@ recover it *for* you. Recovery is re-enrolment, not decryption:
 
 1. **Generate a fresh identity:** `gitsafe key gen` (optionally `--passphrase`),
    then `gitsafe key show`.
-2. **An admin re-adds you with the new keys:**
-   `gitsafe member add <you> --sign <hex> --enc <age1...> --update` (the
-   `--update` flag is required to replace an existing member's keys), then
-   commits the policy change.
+2. **An admin re-adds you with the new key:**
+   `gitsafe member add <you> --update --enc <age1...>` (the `--update` flag is
+   required to replace an existing member's key; add `--sign <hex>` too if you're
+   an admin who signs policy), then commits the policy change.
 3. **An admin rotates** so current secrets are re-encrypted to your new key:
    `gitsafe rotate` → `git add .gitsafe <secrets> && git commit`.
 4. After a pull you can read **current** secrets again. Note you still cannot
@@ -378,21 +378,26 @@ name for policy-signing operations.
 Default marks written: `.env`, `.env.*`, `*.pem`, `*.key`, `secrets/**`, plus a
 guard (`.gitsafe/** -filter`) keeping policy files unencrypted.
 
-### `gitsafe member add NAME --sign HEX --enc age1...`
-Add (or update) a keyring member with their ed25519 signing public key and age
-recipient. Signs a new policy version. Requires you to be an admin.
+### `gitsafe member add NAME --enc age1... [--sign HEX] [--update]`
+Add (or `--update`) a keyring member. **`--enc`** (their age recipient) is all a
+read-only member needs. **`--sign`** (their ed25519 public key) is optional and
+only required for someone who will **administer** the policy (sign changes) —
+granting `admin` to a member without a sign key warns you to add it. On
+`--update`, an existing sign key and status are preserved if not re-supplied.
+Signs a new policy version. Requires you to be an admin.
 
 ### `gitsafe member revoke NAME`
 Mark a member `revoked`. They're excluded from recipients after the next
 `rotate`. Requires admin.
 
-### `gitsafe onboard NAME BRANCH --sign HEX --enc age1... [--update]`
+### `gitsafe onboard NAME BRANCH --enc age1... [--sign HEX] [--update]`
 The one-shot teammate flow: adds (or `--update`s) the member **and** grants them
 `read` on `BRANCH` in a single signed policy version, then runs `rotate` so the
-branch's secrets are immediately re-encrypted to include them. Equivalent to
-`member add` + `grant … read BRANCH` + `rotate`, but atomic and harder to leave
-half-done. Commit `.gitsafe` and the re-encrypted secrets afterward. Requires
-admin.
+branch's secrets are immediately re-encrypted to include them. Only `--enc` is
+required (read-only); `--sign` is optional, for someone who will administer the
+policy. Equivalent to `member add` + `grant … read BRANCH` + `rotate`, but atomic
+and harder to leave half-done. Commit `.gitsafe` and the re-encrypted secrets
+afterward. Requires admin.
 
 ### `gitsafe group add GROUP NAME [NAME...]`
 Add members to a named group, creating it if absent. A group can be the subject
