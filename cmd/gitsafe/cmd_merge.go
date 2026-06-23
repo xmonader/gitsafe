@@ -92,6 +92,13 @@ func readMergeSide(path string) (plaintext []byte, wasEncrypted bool, err error)
 	if err != nil {
 		return nil, false, err
 	}
+	// A locked placeholder is what a non-reader's working tree holds in place of a
+	// secret. It is not an envelope, so treating it as plaintext would merge the
+	// placeholder text into the secret and re-encrypt that — silently destroying
+	// the file. Refuse: this merge must be resolved by someone who can read it.
+	if format.IsLockedPlaceholder(data) {
+		return nil, true, fmt.Errorf("merge: %q is locked (you lack read access); resolve this merge as a reader", path)
+	}
 	if !format.IsWrapped(data) {
 		return data, false, nil
 	}
@@ -107,23 +114,28 @@ func readMergeSide(path string) (plaintext []byte, wasEncrypted bool, err error)
 }
 
 // mergeFile3 runs a 3-way merge of ours/ancestor/theirs via `git merge-file -p`
-// and returns the merged bytes and whether conflict markers remain.
+// and returns the merged bytes and whether conflict markers remain. The decrypted
+// plaintexts are written into a private (0700) temp directory that is removed
+// before returning, so secrets never touch world-readable /tmp.
 func mergeFile3(ours, ancestor, theirs []byte) (merged []byte, conflict bool, err error) {
-	o, err := writeTemp("ours", ours)
+	dir, err := os.MkdirTemp("", "gitsafe-merge-")
 	if err != nil {
 		return nil, false, err
 	}
-	defer os.Remove(o)
-	b, err := writeTemp("base", ancestor)
+	defer os.RemoveAll(dir)
+
+	o, err := writeTemp(dir, "ours", ours)
 	if err != nil {
 		return nil, false, err
 	}
-	defer os.Remove(b)
-	t, err := writeTemp("theirs", theirs)
+	b, err := writeTemp(dir, "base", ancestor)
 	if err != nil {
 		return nil, false, err
 	}
-	defer os.Remove(t)
+	t, err := writeTemp(dir, "theirs", theirs)
+	if err != nil {
+		return nil, false, err
+	}
 
 	cmd := exec.Command("git", "merge-file", "-p", "-L", "ours", "-L", "base", "-L", "theirs", o, b, t)
 	var stdout []byte
@@ -140,9 +152,10 @@ func mergeFile3(ours, ancestor, theirs []byte) (merged []byte, conflict bool, er
 	return stdout, false, nil
 }
 
-// writeTemp writes data to a uniquely-named temp file and returns its path.
-func writeTemp(label string, data []byte) (string, error) {
-	f, err := os.CreateTemp("", "gitsafe-merge-"+label+"-*")
+// writeTemp writes data to a uniquely-named temp file inside dir and returns its
+// path. dir is expected to be a private (0700) directory created by the caller.
+func writeTemp(dir, label string, data []byte) (string, error) {
+	f, err := os.CreateTemp(dir, label+"-*")
 	if err != nil {
 		return "", err
 	}
