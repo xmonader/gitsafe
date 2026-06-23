@@ -84,3 +84,31 @@ func FuzzParse(f *testing.F) {
 		_ = IsLockedPlaceholder(data)
 	})
 }
+
+// TestEnvelopeGoldenVector pins the exact wire layout: the magic, the header
+// length encoding, and the precise header JSON (field names, order, version).
+// A change here means existing repos may become unreadable — it must be
+// deliberate, so it must break this test.
+func TestEnvelopeGoldenVector(t *testing.T) {
+	if len(Magic) != 9 || string(Magic) != "\x00gitsafe\x00" {
+		t.Fatalf("magic drifted: %q (len %d)", Magic, len(Magic))
+	}
+	got := Wrap([]string{"age1aaa", "age1bbb"}, []byte("CIPHERTEXT"))
+
+	if !bytes.HasPrefix(got, Magic) {
+		t.Fatal("missing magic prefix")
+	}
+	rest := got[len(Magic):]
+	hlen := int(rest[0])<<24 | int(rest[1])<<16 | int(rest[2])<<8 | int(rest[3])
+	rest = rest[4:]
+	wantHeader := `{"v":1,"recipients":["age1aaa","age1bbb"]}`
+	if hlen != len(wantHeader) {
+		t.Fatalf("header length = %d, want %d", hlen, len(wantHeader))
+	}
+	if string(rest[:hlen]) != wantHeader {
+		t.Fatalf("header JSON drifted:\n got: %s\nwant: %s", rest[:hlen], wantHeader)
+	}
+	if string(rest[hlen:]) != "CIPHERTEXT" {
+		t.Fatalf("ciphertext not appended verbatim: %q", rest[hlen:])
+	}
+}

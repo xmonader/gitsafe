@@ -20,5 +20,9 @@ jobs:
         run: go vet ./...
       - name: test
         run: go test -race ./...
-      - name: fuzz (smoke)
+      - name: fuzz envelope (smoke)
         run: go test ./internal/format -run xxx -fuzz FuzzParse -fuzztime 20s
+      - name: fuzz policy (smoke)
+        run: |
+          go test ./internal/policy -run xxx -fuzz FuzzPolicyMethods -fuzztime 20s
+          go test ./internal/policy -run xxx -fuzz FuzzStoreVerify -fuzztime 20s

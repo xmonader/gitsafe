@@ -10,7 +10,7 @@
 //
 // Wire layout:
 //
-//	MAGIC (10 bytes: "\x00gitsafe\x00")
+//	MAGIC (9 bytes: "\x00gitsafe\x00")
 //	uint32 big-endian header length
 //	header JSON: {"v":1,"recipients":["age1...",...]}  (recipients sorted)
 //	age ciphertext (binary, to end of blob)
