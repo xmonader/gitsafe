@@ -127,7 +127,7 @@ Three details worth knowing:
 
 ## Is it safe?
 
-- **Private keys** stay in `~/.config/gitsafe/`, never in the repo. The repo only ever holds *public* keys.
+- **Private keys** stay in `~/.config/gitsafe/`, never in the repo. The repo only ever holds *public* keys. Protect the key on disk with `gitsafe key gen --passphrase` (or `gitsafe key lock` to encrypt an existing one); git filters then read the passphrase from `GITSAFE_PASSPHRASE`.
 - **Trust is confirmed once, on purpose.** The access list is self-signed; each clone pins its fingerprint locally (`.git/gitsafe/root`). Check the fingerprint the first time with `gitsafe policy verify`.
 - **What an attacker who edits the repo's contents *can't* do:** trick you into encrypting a new secret to their key. Tampering with the access list breaks verification or fails the fingerprint check, and gitsafe refuses to encrypt.
 - **What gitsafe does *not* protect against:**
@@ -136,7 +136,7 @@ Three details worth knowing:
 
 ## Limitations (v0.1)
 
-- **No automatic merge of encrypted files.** If two branches change the same secret, git can't auto-merge the encrypted blobs — decrypt, merge, and re-stage by hand.
+- **Merging encrypted files needs read access.** gitsafe installs a merge driver that decrypts, 3-way merges, and re-encrypts automatically — but only a reader of the secret can run it. A non-reader's merge is refused rather than mangling data.
 - **Your branch must be clear when adding secrets.** During a detached checkout or mid-rebase, gitsafe refuses (it can't tell which branch's readers to use). Add secrets from a normal branch.
 - **Read protection is real encryption; write/admin levels are policy, not server enforcement.** gitsafe is a tool layered on git, not a git server — it can't block a push, only record who's allowed.
 - Not in v0.1: groups, encrypting a whole branch's files (not just marked ones), a hosted access-list directory, and key backends other than age (KMS/PGP).
