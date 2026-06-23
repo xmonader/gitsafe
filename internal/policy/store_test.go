@@ -142,6 +142,24 @@ func TestRevokedMemberDroppedFromRecipients(t *testing.T) {
 	}
 }
 
+func TestMutateRefusesWhenLocked(t *testing.T) {
+	s := newStore(t)
+	alice := newActor(t, "alice")
+	Bootstrap(s, alice.name, alice.signPub, alice.enc, alice.priv)
+
+	// Simulate a concurrent writer holding the lock.
+	if err := os.MkdirAll(s.dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(s.dir, "lock"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := s.Mutate(alice.name, alice.priv, func(p *Policy) error { return nil })
+	if err == nil {
+		t.Fatal("Mutate must refuse while the policy is locked")
+	}
+}
+
 func TestCorruptObjectDetected(t *testing.T) {
 	s := newStore(t)
 	alice := newActor(t, "alice")

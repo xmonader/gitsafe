@@ -84,6 +84,9 @@ func (s *Store) Load() (*Policy, error) {
 func (s *Store) HeadHash() (string, error) { return s.head() }
 
 // save writes a policy object and repoints HEAD at it; returns the new hash.
+// Both writes are atomic (temp file + rename) and the object is durably written
+// before HEAD is moved, so a crash can never leave HEAD pointing at a
+// half-written or missing object.
 func (s *Store) save(p *Policy) (string, error) {
 	payload, err := json.Marshal(p)
 	if err != nil {
@@ -93,19 +96,71 @@ func (s *Store) save(p *Policy) (string, error) {
 	if err := os.MkdirAll(s.objectsDir(), 0o755); err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(s.objPath(h), payload, 0o644); err != nil {
+	if err := writeAtomic(s.objPath(h), payload, 0o644); err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(s.headPath(), []byte(h+"\n"), 0o644); err != nil {
+	if err := writeAtomic(s.headPath(), []byte(h+"\n"), 0o644); err != nil {
 		return "", err
 	}
 	return h, nil
+}
+
+// writeAtomic writes data to path via a temp file in the same directory, fsync,
+// and rename — so a reader sees either the old file or the complete new one.
+func writeAtomic(path string, data []byte, mode os.FileMode) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName) // no-op after a successful rename
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmpName, mode); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, path)
+}
+
+// lock takes an exclusive on-disk lock so two concurrent gitsafe processes
+// cannot race to extend the chain (which would silently drop one version).
+// The returned release function must be called.
+func (s *Store) lock() (func(), error) {
+	if err := os.MkdirAll(s.dir, 0o755); err != nil {
+		return nil, err
+	}
+	lockPath := filepath.Join(s.dir, "lock")
+	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+	if err != nil {
+		if os.IsExist(err) {
+			return nil, fmt.Errorf("policy is locked by another gitsafe process (%s); retry, or remove the file if stale", lockPath)
+		}
+		return nil, err
+	}
+	f.Close()
+	return func() { os.Remove(lockPath) }, nil
 }
 
 // Mutate creates the next signed policy version by applying fn to a copy of the
 // current policy (or an empty v0 if none exists), signs it as signer, verifies
 // it against its parent, and saves it. Returns the new head hash.
 func (s *Store) Mutate(signer string, priv ed25519.PrivateKey, fn func(*Policy) error) (string, error) {
+	release, err := s.lock()
+	if err != nil {
+		return "", err
+	}
+	defer release()
+
 	cur, err := s.Load()
 	if err != nil {
 		return "", err
