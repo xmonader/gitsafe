@@ -316,6 +316,15 @@ the same idea as SSH `known_hosts`.
 `gitsafe policy verify` always shows the current root fingerprint and whether it
 matches your pin (`pinned and matches ✓`, `NOT PINNED`, or `MISMATCH`).
 
+**Rollback protection.** Pinning the root catches a *replacement* chain, but not a
+*replay* of an older version of your own chain (which keeps the same root) — for
+example, restoring a pre-revocation policy to resurrect a removed reader. To stop
+this, each clone records the highest policy version it has trusted (in
+`.git/gitsafe/highwater`) and refuses any policy whose version is lower. Policy
+versions are cryptographically enforced to increase by one per change, so the
+counter can't be forged. An intended rollback (a deliberate re-bootstrap) is
+accepted only after `gitsafe trust --force`, which re-bases the high-water mark.
+
 ---
 
 ## Rotation & key lifecycle
@@ -484,6 +493,20 @@ markers live inside the re-encrypted blob, so a reader sees them on checkout and
 resolves by editing and re-staging. You don't call this by hand. You must be a
 reader of the secret to merge it; a non-reader's merge is refused rather than
 silently mangling data.
+
+**Limitations.**
+- The result is encrypted to the **current (target) branch's** readers — the
+  branch the merge lands on. This is intentional, but means merging a secret from
+  a narrower branch into a wider one makes it readable by the wider branch's
+  readers, as a normal merge would.
+- 3-way merge requires the decrypted plaintext to be **text**. A binary secret
+  (e.g. a keystore) cannot be line-merged; if both sides changed it, resolve by
+  hand and stage the version you want.
+- The driver needs an unambiguous current branch, so a secret conflict that
+  arises **during a rebase or with a detached HEAD** cannot be auto-resolved
+  (there is no defensible recipient set without a branch). Complete the rebase on
+  a branch, or merge instead. This fails safe: nothing is written and the clean
+  filter likewise refuses, so plaintext can't be staged.
 
 ---
 

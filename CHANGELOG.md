@@ -41,10 +41,30 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   directory, so another local account cannot tamper with this clone's trust
   anchor.
 
+### Security
+- **Plaintext-leak fix:** the clean filter treated any input beginning with the
+  9-byte envelope magic as already-encrypted (a prefix-only check), so a
+  plaintext or binary secret whose first bytes matched the magic could be
+  committed unencrypted (or silently overwrite new content with the stored blob).
+  Encryption is now gated on a structurally valid envelope (`format.Parse`); the
+  same fix applies to `gitsafe check`.
+- **Rollback defense:** a content-only attacker could replay an older,
+  still-validly-signed policy HEAD to undo a revocation. Policy versions are now
+  enforced monotonic (`version == parent + 1`) and the trust gate refuses any
+  policy below the highest version a clone has trusted (`trust --force` re-bases).
+- **Lock correctness:** the mtime-based stale-lock steal was a TOCTOU that could
+  grant the policy lock to two processes at once (lost-update chain corruption).
+  Replaced with an advisory `flock` released by the kernel on process death — safe
+  crash recovery with no stealing race.
+- `refs/policy` is now implicitly restricted, so a wildcard (`*`) admin grant can
+  no longer silently make every member a policy administrator.
+
 ### Fixed
 - The policy engine refuses any change that would leave no usable admin (an
   active member holding admin with a signing key), preventing a revoke/strip
   from bricking the signed chain.
+- `writeAtomic` fsyncs the parent directory after rename, so a policy write
+  survives power loss without HEAD pointing at a lost object.
 - The merge driver refuses a locked placeholder as a merge input instead of
   merging the placeholder text into the secret and re-encrypting it (which
   destroyed the file for all readers); its decrypted temporaries are written to
