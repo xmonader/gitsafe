@@ -65,6 +65,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   from bricking the signed chain.
 - `writeAtomic` fsyncs the parent directory after rename, so a policy write
   survives power loss without HEAD pointing at a lost object.
+- gitsafe generates `.gitsafe/policy/.gitignore` (excluding the lock and
+  atomic-write temp files) so committing the policy chain never stages them.
 - The merge driver refuses a locked placeholder as a merge input instead of
   merging the placeholder text into the secret and re-encrypting it (which
   destroyed the file for all readers); its decrypted temporaries are written to
