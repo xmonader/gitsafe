@@ -23,8 +23,12 @@ func acquireLock(lockPath string) (func(), error) {
 		return nil, fmt.Errorf("policy is locked by another gitsafe process (%s); retry", lockPath)
 	}
 	return func() {
+		// Release by closing the descriptor (which drops the flock). Do NOT unlink
+		// the lock file: removing it while another process has the same inode open
+		// would let a later acquirer create a fresh inode and flock that, yielding
+		// two concurrent holders. The file is a stable, reusable coordination point
+		// (kept out of commits by .gitsafe/policy/.gitignore).
 		syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
 		f.Close()
-		os.Remove(lockPath)
 	}, nil
 }

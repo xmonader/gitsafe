@@ -84,6 +84,17 @@ func (s *Store) Load() (*Policy, error) {
 // HeadHash returns the head hash ("" if no policy).
 func (s *Store) HeadHash() (string, error) { return s.head() }
 
+// ensureGitignore writes a .gitignore in the policy dir that excludes the
+// transient lock and temp files, so committing the policy chain (.gitsafe/policy)
+// never accidentally stages them. Best-effort and idempotent.
+func (s *Store) ensureGitignore() {
+	p := filepath.Join(s.dir, ".gitignore")
+	if _, err := os.Stat(p); err == nil {
+		return
+	}
+	_ = os.WriteFile(p, []byte("lock\n.tmp-*\n"), 0o644)
+}
+
 // save writes a policy object and repoints HEAD at it; returns the new hash.
 // Both writes are atomic (temp file + rename) and the object is durably written
 // before HEAD is moved, so a crash can never leave HEAD pointing at a
@@ -97,6 +108,7 @@ func (s *Store) save(p *Policy) (string, error) {
 	if err := os.MkdirAll(s.objectsDir(), 0o755); err != nil {
 		return "", err
 	}
+	s.ensureGitignore()
 	if err := writeAtomic(s.objPath(h), payload, 0o644); err != nil {
 		return "", err
 	}
@@ -153,6 +165,7 @@ func (s *Store) lock() (func(), error) {
 	if err := os.MkdirAll(s.dir, 0o700); err != nil {
 		return nil, err
 	}
+	s.ensureGitignore()
 	lockPath := filepath.Join(s.dir, "lock")
 	return acquireLock(lockPath)
 }
