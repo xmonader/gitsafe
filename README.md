@@ -40,6 +40,7 @@ When you remove someone, future secrets exclude them — but they kept old clone
 
 ## Learn more
 
+- **[The Book](book/README.md)** — *Secrets in Git, Done Right*: a short, hands-on book that teaches gitsafe from first principles, with exercises and projects.
 - **[Tutorial](docs/tutorial.md)** — step by step, by example.
 - **[User Guide](docs/userguide.md)** — every command, the full picture.
 - **[Threat Model](docs/threat-model.md)** — exactly what it protects, and what it doesn't.
