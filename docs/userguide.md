@@ -16,6 +16,7 @@ see the [README](../README.md).
 - [The git filters](#the-git-filters)
 - [The trust model](#the-trust-model)
 - [Rotation & key lifecycle](#rotation--key-lifecycle)
+- [Offboarding: removing someone correctly](#offboarding-removing-someone-correctly)
 - [Command reference](#command-reference)
 - [Using gitsafe in CI and as a pre-commit hook](#using-gitsafe-in-ci-and-as-a-pre-commit-hook)
 - [Security model & threat boundaries](#security-model--threat-boundaries)
@@ -352,6 +353,75 @@ any exposure.
 To replace your own keys: `gitsafe key gen` on a new file, send the new public
 keys to an admin, who runs `member add <you>` (updating your entry) and
 `rotate`.
+
+---
+
+## Offboarding: removing someone correctly
+
+This is the procedure that matters most, and the one most easily gotten wrong.
+Removing someone from the policy and rotating cuts their **future** access — but
+it does **not** retroactively protect the secret value they could already read.
+gitsafe (like git-crypt, SOPS, or any "encrypted files in git" approach) cannot
+rewrite history or reach into the clones and packfiles a leaver already has. So
+offboarding is **two** jobs, and you must do both:
+
+1. **Cut future access** — revoke, then re-encrypt without them.
+2. **Close the past** — change the secret *value*, because they had it.
+
+### The checklist
+
+```bash
+# 1. Remove them from the policy (one branch, or everything).
+gitsafe revoke bob read staging        # cut one branch
+#   …or…
+gitsafe member revoke bob              # cut all access
+
+# 2. Re-encrypt the existing secrets to the reduced reader set.
+gitsafe rotate
+git add .gitsafe && git commit -m "remove bob from staging"
+
+# 3. Change the secret VALUE — treat the old one as leaked.
+echo "DB_PASSWORD=<a brand-new value>" > .env
+gitsafe rotate
+git add .env && git commit -m "roll db password after offboarding bob"
+
+# 4. Push, and rotate the credential at its source too (the database,
+#    the cloud provider, the API dashboard) — not just in the repo.
+git push
+```
+
+### Why step 3 is not optional
+
+After steps 1–2, Bob is excluded from all *new* ciphertext. But he kept a clone,
+and git history still holds the old blobs — and those blobs still contain Bob's
+wrapped copy of the old file key. He can decrypt the **old value** offline,
+forever. Rotation is **forward-only**: it protects future blobs, never past ones.
+
+```
+   time ────────────────────────────────────────────────────────►
+   [secret encrypted to Bob]     [revoke + rotate]    [new secrets, no Bob]
+            │                                                  │
+   Bob already pulled this ───────────────────────►  Bob cannot read these
+   (his clone + git history keep the old blob with HIS
+    wrapped key → the OLD value stays decryptable to him)
+```
+
+Changing the value in step 3 makes Bob's retained ciphertext decrypt to a **dead**
+secret, while the live secret is one he has neither a key for nor ever saw. That
+is what actually ends his access. Rotating recipients closes the door going
+forward; rotating the value closes the door behind you.
+
+### Notes
+
+- You **cannot** revoke the last usable admin (the one with a signing key) —
+  gitsafe refuses rather than leave the policy unable to sign its next change.
+  Keep at least two admins so offboarding one is always possible.
+- Removal is **reversible**: re-add someone with
+  `gitsafe member add bob --update --enc age1...` (this reactivates a revoked
+  member), then `rotate`.
+- If you only moved a grant and nobody lost access to a live secret, step 3 is
+  unnecessary — it is specifically for when someone who *had* a secret should no
+  longer have it.
 
 ---
 

@@ -7,6 +7,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Documentation
+- New User Guide section **"Offboarding: removing someone correctly"** — a
+  copy-pasteable checklist (revoke → rotate → roll the secret value) explaining
+  why rotation is forward-only and what actually ends a leaver's access. Linked
+  from the README and tutorial.
+- *Secrets in Git, Done Right* — a short, hands-on book under `book/` teaching
+  gitsafe from first principles, with exercises and projects.
+
 ## [0.1.0] — 2026-06-24
 
 First public release: git-crypt with portable, offline-verifiable access control.

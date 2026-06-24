@@ -36,7 +36,7 @@ Needs Go 1.25+ to build and `git` at runtime.
 
 ## One thing to know
 
-When you remove someone, future secrets exclude them — but they kept old clones, and git history still holds what was encrypted to them. So after offboarding, **change the secret value itself** (new password/key), like any leak. This is true of any "encrypted files in git" tool.
+When you remove someone, future secrets exclude them — but they kept old clones, and git history still holds what was encrypted to them. So after offboarding, **change the secret value itself** (new password/key), like any leak. This is true of any "encrypted files in git" tool. Full procedure: [Offboarding: removing someone correctly](docs/userguide.md#offboarding-removing-someone-correctly).
 
 ## Learn more
 

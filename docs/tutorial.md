@@ -298,7 +298,8 @@ branch.)
 > anyone with access to a real secret, **rotate the secret's value itself**
 > (issue a new DB password, roll the API key), exactly as you would after any
 > credential exposure. This is inherent to encryption-at-rest in an append-only
-> history, not a gitsafe quirk.
+> history, not a gitsafe quirk. See the full step-by-step checklist:
+> [Offboarding: removing someone correctly](userguide.md#offboarding-removing-someone-correctly).
 
 ---
 
