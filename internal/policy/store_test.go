@@ -272,6 +272,29 @@ func TestReAddReactivatesRevokedMember(t *testing.T) {
 	}
 }
 
+func TestWildcardCannotAdminPolicy(t *testing.T) {
+	s := newStore(t)
+	alice := newActor(t, "alice")
+	bob := newActor(t, "bob")
+	Bootstrap(s, alice.name, alice.signPub, alice.enc, alice.priv)
+	s.Mutate(alice.name, alice.priv, func(p *Policy) error {
+		p.Keyring["bob"] = Member{Sign: bob.signPub, Enc: bob.enc, Status: "active"}
+		return nil
+	})
+	p, _ := s.Load()
+	// A wildcard admin grant on refs/** must NOT confer admin over refs/policy.
+	p2 := *p
+	p2.Grants = append(append([]Grant{}, p.Grants...),
+		Grant{ID: "wild", Subject: "*", Verb: Admin, Resource: "refs/**"})
+	if p2.Eval("bob", Admin, PolicyResource) {
+		t.Fatal("a '*' admin grant must not confer admin over refs/policy")
+	}
+	// And bob (only reachable via '*') must not count as a usable admin.
+	if p2.Eval("bob", Admin, "refs/heads/main") == false {
+		t.Fatal("sanity: '*' admin should still apply to a normal branch")
+	}
+}
+
 func TestCorruptObjectDetected(t *testing.T) {
 	s := newStore(t)
 	alice := newActor(t, "alice")

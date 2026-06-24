@@ -144,8 +144,13 @@ func (p *Policy) Eval(actor, verb, resource string) bool {
 }
 
 // isRestricted reports whether resource is a need-to-know ref (public grants
-// suppressed).
+// suppressed). refs/policy is ALWAYS restricted: administering the policy must be
+// granted to named subjects, never to "*", so a wildcard grant can never silently
+// make every keyring member an admin.
 func (p *Policy) isRestricted(resource string) bool {
+	if resource == PolicyResource {
+		return true
+	}
 	for _, pat := range p.Restricted {
 		if matchResource(pat, resource) {
 			return true
