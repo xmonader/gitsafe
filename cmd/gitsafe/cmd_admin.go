@@ -30,7 +30,7 @@ func signer() (string, ed25519.PrivateKey, error) {
 
 func cmdMember(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: gitsafe member add|revoke ...")
+		return fmt.Errorf("usage: gitsafe member <add|revoke> [args]")
 	}
 	switch args[0] {
 	case "add":
@@ -38,7 +38,7 @@ func cmdMember(args []string) error {
 	case "revoke":
 		return memberRevoke(args[1:])
 	default:
-		return fmt.Errorf("usage: gitsafe member add|revoke ...")
+		return fmt.Errorf("usage: gitsafe member <add|revoke> [args]")
 	}
 }
 
@@ -313,10 +313,10 @@ func cmdPolicy(args []string) error {
 		fmt.Printf("Policy chain valid: %d version(s), head %s\n", n, short(head))
 		fmt.Printf("Root fingerprint:  %s\n", rootPub)
 		pin, _ := readPin()
-		switch {
-		case pin == "":
+		switch pin {
+		case "":
 			fmt.Println("Trust:             NOT PINNED in this clone (run 'gitsafe trust')")
-		case pin == rootPub:
+		case rootPub:
 			fmt.Println("Trust:             pinned and matches ✓")
 		default:
 			fmt.Printf("Trust:             MISMATCH — pinned %s (possible tampering)\n", short(pin))

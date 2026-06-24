@@ -214,7 +214,9 @@ func (s *Store) Mutate(signer string, priv ed25519.PrivateKey, fn func(*Policy) 
 func clone(p *Policy) Policy {
 	b, _ := json.Marshal(p)
 	var out Policy
-	json.Unmarshal(b, &out)
+	// Round-trips our own just-marshaled Policy, so unmarshal cannot fail in
+	// practice; the result is overwritten below regardless.
+	_ = json.Unmarshal(b, &out)
 	out.Sig = ""
 	out.Signer = ""
 	return out

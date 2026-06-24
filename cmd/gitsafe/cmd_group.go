@@ -13,7 +13,7 @@ import (
 // evaluated.
 func cmdGroup(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: gitsafe group add|remove|list ...")
+		return fmt.Errorf("usage: gitsafe group <add|remove|list> [args]")
 	}
 	switch args[0] {
 	case "add":
@@ -23,7 +23,7 @@ func cmdGroup(args []string) error {
 	case "list", "show":
 		return groupList()
 	default:
-		return fmt.Errorf("usage: gitsafe group add|remove|list ...")
+		return fmt.Errorf("usage: gitsafe group <add|remove|list> [args]")
 	}
 }
 

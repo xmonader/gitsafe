@@ -14,6 +14,9 @@ e2e:
 
 lint:
 	go vet $(PKG)
+	@command -v golangci-lint >/dev/null 2>&1 \
+		&& golangci-lint run $(PKG) \
+		|| echo "golangci-lint not installed — ran 'go vet' only (see .golangci.yml)"
 
 clean:
 	rm -f $(BIN)
