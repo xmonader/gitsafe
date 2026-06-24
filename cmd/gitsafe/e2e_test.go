@@ -264,6 +264,95 @@ func TestTrustGate(t *testing.T) {
 	}
 }
 
+// TestRollbackRejected proves the anti-rollback high-water mark: after a clone
+// has trusted version N, replaying an older still-valid head (e.g. to resurrect
+// a revoked reader) is refused by the trust gate, even though the root pin is
+// unchanged across the rollback.
+func TestRollbackRejected(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	binDir := t.TempDir()
+	bin := filepath.Join(binDir, "gitsafe")
+	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
+		t.Fatalf("build gitsafe: %v\n%s", err, out)
+	}
+	env := func(idPath string) []string {
+		e := append([]string{}, os.Environ()...)
+		return append(e,
+			"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+			"GITSAFE_IDENTITY="+idPath,
+			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@e",
+			"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@e",
+		)
+	}
+	run := func(dir, idPath, name string, args ...string) (string, error) {
+		cmd := exec.Command(name, args...)
+		cmd.Dir = dir
+		cmd.Env = env(idPath)
+		var out bytes.Buffer
+		cmd.Stdout, cmd.Stderr = &out, &out
+		err := cmd.Run()
+		return out.String(), err
+	}
+	must := func(t *testing.T, dir, idPath, name string, args ...string) string {
+		t.Helper()
+		out, err := run(dir, idPath, name, args...)
+		if err != nil {
+			t.Fatalf("%s %s: %v\n%s", name, strings.Join(args, " "), err, out)
+		}
+		return out
+	}
+
+	repo := t.TempDir()
+	adminID := filepath.Join(t.TempDir(), "admin")
+	bobID := filepath.Join(t.TempDir(), "bob")
+
+	must(t, repo, adminID, "git", "init", "-b", "main")
+	must(t, repo, adminID, bin, "key", "gen")
+	must(t, repo, adminID, bin, "init", "--user", "admin")
+	os.WriteFile(filepath.Join(repo, ".env"), []byte("S=1\n"), 0o644)
+	must(t, repo, adminID, "git", "add", ".gitsafe", ".gitattributes", ".env")
+	must(t, repo, adminID, "git", "commit", "-m", "init")
+
+	// Add bob as a reader, then capture this (pre-revoke) head.
+	bobKeys := must(t, repo, bobID, bin, "key", "gen")
+	var bobEnc string
+	for _, line := range strings.Split(bobKeys, "\n") {
+		if strings.HasPrefix(line, "enc  (age):") {
+			bobEnc = strings.TrimSpace(strings.TrimPrefix(line, "enc  (age):"))
+			break
+		}
+	}
+	if bobEnc == "" {
+		t.Fatalf("could not parse bob enc key from: %q", bobKeys)
+	}
+	must(t, repo, adminID, bin, "onboard", "bob", "main", "--enc", bobEnc)
+	preRevoke, err := os.ReadFile(filepath.Join(repo, ".gitsafe", "policy", "HEAD"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Revoke bob and rotate — this advances the trusted high-water mark.
+	must(t, repo, adminID, bin, "member", "revoke", "bob")
+	must(t, repo, adminID, bin, "rotate")
+
+	// Attack: roll HEAD back to the pre-revoke (still validly-signed) version.
+	if err := os.WriteFile(filepath.Join(repo, ".gitsafe", "policy", "HEAD"), preRevoke, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Any policy-trusting operation must now refuse with a rollback error.
+	os.WriteFile(filepath.Join(repo, ".env"), []byte("S=2\n"), 0o644)
+	out, err := run(repo, adminID, bin, "rotate")
+	if err == nil {
+		t.Fatalf("rollback must be refused, but rotate succeeded:\n%s", out)
+	}
+	if !strings.Contains(strings.ToUpper(out), "ROLLBACK") {
+		t.Fatalf("expected a ROLLBACK refusal, got:\n%s", out)
+	}
+}
+
 // TestWorktree verifies gitsafe works in a linked git worktree: smudge decrypts
 // there, and clean works without re-trusting because the pin is shared via git's
 // common dir. This covers a slice of git's long tail that overlays often break.

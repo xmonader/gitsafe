@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"gitsafe/internal/gitx"
@@ -88,6 +89,46 @@ func writeVerified(head, rootPub string) error {
 	return os.WriteFile(p, []byte(head+" "+rootPub+"\n"), 0o600)
 }
 
+// highwaterPath is the per-clone record of the highest policy version this clone
+// has ever trusted. It lives in .git/ (never committed), so a content-only
+// attacker cannot forge or lower it.
+func highwaterPath() (string, error) {
+	gitDir, err := gitx.GitDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(gitDir, "gitsafe", "highwater"), nil
+}
+
+// readHighwater returns the highest trusted version, or -1 if none recorded.
+func readHighwater() int {
+	p, err := highwaterPath()
+	if err != nil {
+		return -1
+	}
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return -1
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(string(b)))
+	if err != nil {
+		return -1
+	}
+	return n
+}
+
+// writeHighwater records v as the highest trusted version for this clone.
+func writeHighwater(v int) error {
+	p, err := highwaterPath()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(p, []byte(strconv.Itoa(v)+"\n"), 0o600)
+}
+
 // trustedPolicy verifies the signed chain AND that its root matches this clone's
 // pin, then returns the current policy. This is the gate every operation that
 // trusts policy-derived recipients (i.e. the clean filter) must pass through —
@@ -138,7 +179,24 @@ func trustedPolicy(rc *repoCtx) (*policy.Policy, error) {
 			"  If this is an intended re-bootstrap, run: gitsafe trust --fingerprint %s --force",
 			pin, rootPub, rootPub)
 	}
-	return rc.store.Load()
+
+	pol, err := rc.store.Load()
+	if err != nil {
+		return nil, err
+	}
+	// Anti-rollback: the root pin is unchanged across a replay of an older head,
+	// so it cannot catch one. Reject any policy whose version is below the highest
+	// this clone has already trusted — that is a rollback (e.g. resurrecting a
+	// revoked reader). Same-version is fine (content-addressed, so identical).
+	if hw := readHighwater(); pol.Version < hw {
+		return nil, fmt.Errorf("policy ROLLBACK detected — REFUSING to use it (possible tampering).\n"+
+			"  current version: %d\n  highest trusted: %d\n"+
+			"  If this rollback is intended, re-establish trust: gitsafe trust --force",
+			pol.Version, hw)
+	} else if pol.Version > hw {
+		_ = writeHighwater(pol.Version)
+	}
+	return pol, nil
 }
 
 func cmdTrust(args []string) error {
@@ -190,6 +248,12 @@ func cmdTrust(args []string) error {
 	}
 	if head, herr := rc.store.HeadHash(); herr == nil && head != "" {
 		_ = writeVerified(head, rootPub) // keep the fast-path cache consistent
+	}
+	// Re-establishing trust deliberately accepts the current version as the new
+	// baseline, so reset the anti-rollback high-water mark to it (a forced
+	// re-trust may legitimately point at a lower version, e.g. a re-bootstrap).
+	if pol, perr := rc.store.Load(); perr == nil && pol != nil {
+		_ = writeHighwater(pol.Version)
 	}
 	fmt.Printf("Pinned policy root %s\n", rootPub)
 	return nil

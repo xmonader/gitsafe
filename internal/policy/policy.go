@@ -101,7 +101,13 @@ func (p *Policy) Verify(parent *Policy) error {
 		}
 		return nil
 	}
-	// Later version: signer must have held admin in the parent.
+	// Later version: numbering must advance by exactly one over the parent, so the
+	// version is a trustworthy monotonic counter (the anti-rollback high-water
+	// mark in the trust gate relies on this).
+	if p.Version != parent.Version+1 {
+		return fmt.Errorf("policy v%d does not follow parent v%d (version must increase by exactly one)", p.Version, parent.Version)
+	}
+	// Signer must have held admin in the parent.
 	m, ok := parent.Keyring[p.Signer]
 	if !ok {
 		return fmt.Errorf("policy v%d signer %q not in parent keyring", p.Version, p.Signer)
