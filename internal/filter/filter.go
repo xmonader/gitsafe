@@ -57,27 +57,73 @@ func Clean(input []byte, path string, d Deps) ([]byte, error) {
 		if !found {
 			return nil, fmt.Errorf("refusing to encrypt a locked placeholder for %q with no stored secret behind it", path)
 		}
+		// Only restore the stored secret for the VERBATIM placeholder (an
+		// unchanged non-reader working copy). If the input merely starts with the
+		// marker but differs, it is either an edited placeholder (a non-reader must
+		// not clobber the secret) or — vanishingly rarely — real content that
+		// begins with the marker line. We can't tell which from content alone, so
+		// refuse: silently restoring would drop a genuine edit, and falling through
+		// to encrypt would overwrite the secret with placeholder text. Both are
+		// data loss; an explicit error is the only safe outcome.
+		if !bytes.Equal(input, format.LockedPlaceholder(path)) {
+			return nil, fmt.Errorf("content for %q begins with the gitsafe locked-placeholder marker but is not the verbatim placeholder; if you edited a locked placeholder, discard it and re-checkout (a real secret must not start with that marker line)", path)
+		}
 		return stored, nil
 	}
 
 	// Treat input as already-encrypted only if it is a STRUCTURALLY VALID
 	// envelope, not merely one starting with the magic bytes. A prefix-only check
 	// (IsWrapped) would let a plaintext/binary secret that happens to begin with
-	// the magic pass through unencrypted into git, or silently overwrite new
-	// content with the stored blob. Parse validates header length, JSON, and
-	// version, so a coincidental or crafted prefix is rejected and falls through
-	// to encryption below.
-	if _, perr := format.Parse(input); perr == nil {
+	// the magic pass through unencrypted into git. Parse validates header length,
+	// JSON, and version, so a coincidental or crafted prefix falls through to
+	// encryption below.
+	if env, perr := format.Parse(input); perr == nil {
 		stored, found, err := d.StoredBlob(path)
 		if err != nil {
 			return nil, err
 		}
 		if found {
+			// An existing path: the authoritative stored blob wins, so a crafted
+			// working-tree envelope can never swap a committed secret's recipients.
+			// This needs no policy lookup, so it still works under a detached HEAD.
 			return stored, nil
+		}
+		// A NEW path whose content is a pre-encrypted envelope. Accept it only if it
+		// is encrypted to EXACTLY the branch's current readers. Otherwise a writer
+		// could introduce a secret encrypted to an unauthorized or stale set —
+		// locking out the real readers, or addressing an outsider — which the clean
+		// filter exists to prevent. (The recipient header is plaintext and could
+		// lie; this still blocks the accidental/stale case and forces a deliberate
+		// attacker into a blob the real readers cannot decrypt, which they notice.)
+		recipients, err := branchRecipients(d)
+		if err != nil {
+			return nil, err
+		}
+		if !slices.Equal(env.Recipients, recipients) {
+			return nil, fmt.Errorf("refusing to commit a pre-encrypted secret for %q whose recipients are not the current readers; stage plaintext and let gitsafe encrypt it", path)
 		}
 		return input, nil
 	}
 
+	recipients, err := branchRecipients(d)
+	if err != nil {
+		return nil, err
+	}
+	if blob := reuseStored(d, path, input, recipients); blob != nil {
+		return blob, nil
+	}
+
+	ct, err := secret.Encrypt(input, recipients)
+	if err != nil {
+		return nil, err
+	}
+	return format.Wrap(recipients, ct), nil
+}
+
+// branchRecipients resolves the current branch's verified reader set, erroring
+// if the branch is ambiguous or has no readers (so a secret is never committed
+// with no one able to read it).
+func branchRecipients(d Deps) ([]string, error) {
 	res, err := d.Resource()
 	if err != nil {
 		return nil, err
@@ -89,16 +135,7 @@ func Clean(input []byte, path string, d Deps) ([]byte, error) {
 	if len(recipients) == 0 {
 		return nil, fmt.Errorf("no readers for %s; grant read access before committing secrets there", res)
 	}
-
-	if blob := reuseStored(d, path, input, recipients); blob != nil {
-		return blob, nil
-	}
-
-	ct, err := secret.Encrypt(input, recipients)
-	if err != nil {
-		return nil, err
-	}
-	return format.Wrap(recipients, ct), nil
+	return recipients, nil
 }
 
 // reuseStored returns the stored blob when it is an envelope encrypted to

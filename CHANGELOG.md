@@ -7,6 +7,17 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Security
+- The clean filter now refuses to commit a **pre-encrypted envelope on a new
+  path whose recipients are not the branch's current readers** — previously such
+  a blob passed through verbatim, which could lock the real readers out or commit
+  a secret readable by an outsider. Stage plaintext and let gitsafe encrypt it.
+- The clean filter now refuses an **edited locked placeholder** (content that
+  starts with the placeholder marker but isn't the verbatim placeholder) instead
+  of silently restoring the stored blob (dropping the edit) or encrypting the
+  placeholder text over the secret. Only the verbatim placeholder restores the
+  stored secret; both data-loss outcomes are now explicit errors.
+
 ### Documentation
 - New User Guide section **"Offboarding: removing someone correctly"** — a
   copy-pasteable checklist (revoke → rotate → roll the secret value) explaining
