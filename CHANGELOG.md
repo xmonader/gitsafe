@@ -7,7 +7,25 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.1.0] — 2026-06-24
+
+First public release: git-crypt with portable, offline-verifiable access control.
+
 ### Added
+- `gitsafe init`, `key gen`/`show`, `member add`/`revoke`, `grant`/`revoke`,
+  `rotate`, `trust`, `access`, `whoami`, `policy show`/`verify`.
+- git clean/smudge filters that encrypt marked files to the current branch's
+  authorized readers with [age](https://age-encryption.org).
+- Branch-scoped recipients: a secret's decryption recipients are derived from
+  who can read its branch.
+- Signed, content-addressed policy chain (ed25519) stored under
+  `.gitsafe/policy/`, verifiable offline.
+- Root-pinned (TOFU) trust anchor with a verified-head cache and a per-clone
+  rollback high-water mark.
+- Deterministic re-staging and placeholder-safety in the clean filter.
+- Compressed object storage at rest with schema versioning and migration.
+- Unit, fuzz, race, and real-git end-to-end test suites; CI on every push;
+  GoReleaser cross-platform builds.
 - Apache-2.0 `LICENSE`.
 - `SECURITY.md` vulnerability-disclosure policy.
 - `CONTRIBUTING.md` and `CODE_OF_CONDUCT.md`.
@@ -73,30 +91,9 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   a private `0700` directory rather than world-readable `/tmp`.
 - `gitsafe check` also flags staged files matching the policy `secret_paths`,
   not only `.gitattributes`-marked files.
-- A stale policy lock left by a crashed process (older than 10 minutes) is
-  reclaimed instead of blocking all future mutations.
 - `format.Parse` caps the declared envelope header length (corrupt-blob guard),
   and `?` in policy ref globs now matches a single character, consistent with
   path globbing.
 
-## [0.1.0] — unreleased
-
-First working core.
-
-### Added
-- `gitsafe init`, `key gen`/`show`, `member add`/`revoke`, `grant`/`revoke`,
-  `rotate`, `trust`, `access`, `whoami`, `policy show`/`verify`.
-- git clean/smudge filters that encrypt marked files to the current branch's
-  authorized readers with [age](https://age-encryption.org).
-- Branch-scoped recipients: a secret's decryption recipients are derived from
-  who can read its branch.
-- Signed, content-addressed policy chain (ed25519) stored under
-  `.gitsafe/policy/`, verifiable offline.
-- Root-pinned (TOFU) trust anchor with a verified-head cache.
-- Deterministic re-staging and placeholder-safety in the clean filter.
-- Compressed object storage at rest with schema versioning and migration.
-- Unit, fuzz, race, and real-git end-to-end test suites; CI on every push;
-  GoReleaser cross-platform builds.
-
-[Unreleased]: https://github.com/xmonader/gitsafe/compare/main...HEAD
+[Unreleased]: https://github.com/xmonader/gitsafe/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/xmonader/gitsafe/releases/tag/v0.1.0
