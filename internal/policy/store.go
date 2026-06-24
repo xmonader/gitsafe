@@ -9,13 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 )
-
-// lockStaleAfter is how old a lock file may be before lock() treats it as
-// abandoned (a crashed process) and steals it. gitsafe mutations complete in
-// well under a second, so any lock this old is certainly stale.
-const lockStaleAfter = 10 * time.Minute
 
 // Store persists the signed policy chain as plain files committed in the repo
 // under .gitsafe/policy/. There is no database — git is the storage and
@@ -136,37 +130,31 @@ func writeAtomic(path string, data []byte, mode os.FileMode) error {
 	if err := os.Chmod(tmpName, mode); err != nil {
 		return err
 	}
-	return os.Rename(tmpName, path)
+	if err := os.Rename(tmpName, path); err != nil {
+		return err
+	}
+	// Fsync the directory so the rename itself is durable: without it a power
+	// loss can lose the rename even though the file content was synced, leaving
+	// HEAD pointing at an object whose directory entry never reached disk.
+	if d, err := os.Open(dir); err == nil {
+		_ = d.Sync()
+		d.Close()
+	}
+	return nil
 }
 
-// lock takes an exclusive on-disk lock so two concurrent gitsafe processes
-// cannot race to extend the chain (which would silently drop one version).
-// The returned release function must be called.
+// lock takes an exclusive lock so two concurrent gitsafe processes cannot race
+// to extend the chain (which would silently drop one version). It uses an
+// advisory file lock held on an open descriptor (flock on Unix): the kernel
+// tracks liveness and releases the lock automatically if the holder dies, so a
+// crashed process never leaves a stale lock and there is no time-based stealing
+// to race on. The returned release function must be called.
 func (s *Store) lock() (func(), error) {
-	if err := os.MkdirAll(s.dir, 0o755); err != nil {
+	if err := os.MkdirAll(s.dir, 0o700); err != nil {
 		return nil, err
 	}
 	lockPath := filepath.Join(s.dir, "lock")
-	for attempt := 0; attempt < 2; attempt++ {
-		f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-		if err == nil {
-			fmt.Fprintf(f, "%d\n", os.Getpid())
-			f.Close()
-			return func() { os.Remove(lockPath) }, nil
-		}
-		if !os.IsExist(err) {
-			return nil, err
-		}
-		// Lock exists. Steal it only if it is older than the staleness window,
-		// which means the holder crashed without releasing it.
-		fi, statErr := os.Stat(lockPath)
-		if statErr == nil && time.Since(fi.ModTime()) > lockStaleAfter {
-			os.Remove(lockPath)
-			continue // retry the create
-		}
-		return nil, fmt.Errorf("policy is locked by another gitsafe process (%s); retry, or remove the file if stale", lockPath)
-	}
-	return nil, fmt.Errorf("could not acquire policy lock (%s)", lockPath)
+	return acquireLock(lockPath)
 }
 
 // Mutate creates the next signed policy version by applying fn to a copy of the
