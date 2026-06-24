@@ -17,6 +17,25 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   of silently restoring the stored blob (dropping the edit) or encrypting the
   placeholder text over the secret. Only the verbatim placeholder restores the
   stored secret; both data-loss outcomes are now explicit errors.
+- `gitsafe check` now **warns** when a staged secret is encrypted to a recipient
+  who is not a current reader of the branch — surfacing a revoked member who can
+  still decrypt until you `rotate`, or a mis-encrypted blob addressed to an
+  outsider. Advisory only (it does not fail the check) and quiet for ordinary
+  not-yet-rotated state.
+- `Recipients` now **skips a member with no encryption key** (empty `enc`)
+  instead of emitting `""` into the recipient set, where it would make age fail
+  and block encrypting the secret for the whole branch — one malformed keyring
+  entry can no longer break encryption for everyone.
+- `clone` (used to build each next policy version) now **panics on a
+  marshal/unmarshal error** rather than silently returning a half-built policy
+  that could then be signed; a `Policy` is pure JSON, so an error there is a
+  programming bug, not a runtime condition to swallow.
+
+### Changed
+- Ref-glob matching anchors with `\z` (end of text) rather than `$`, so a ref
+  with a trailing newline can no longer over-match a grant pattern.
+- Identity files are written with restrictive permissions (private key material
+  is never left group/world-readable).
 
 ### Documentation
 - New User Guide section **"Offboarding: removing someone correctly"** — a
