@@ -22,6 +22,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   still decrypt until you `rotate`, or a mis-encrypted blob addressed to an
   outsider. Advisory only (it does not fail the check) and quiet for ordinary
   not-yet-rotated state.
+- Per-clone trust records (`root` pin, verified-head cache, rollback
+  high-water mark under `.git/gitsafe/`) are now written **atomically** (temp
+  file + rename). A crash mid-write previously could leave a truncated file, and
+  every reader treats an unreadable trust file as "absent" — which silently
+  drops protection: an empty `root` re-opens TOFU re-pinning to a new root, and
+  an unparseable `highwater` resets the rollback floor to -1.
 - `Recipients` now **skips a member with no encryption key** (empty `enc`)
   instead of emitting `""` into the recipient set, where it would make age fail
   and block encrypting the secret for the whole branch — one malformed keyring

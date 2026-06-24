@@ -44,10 +44,41 @@ func writePin(rootPub string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+	return writeTrustFile(p, rootPub+"\n")
+}
+
+// writeTrustFile writes one of this clone's trust records under .git/gitsafe/
+// atomically: temp file in the same dir, then rename. os.WriteFile truncates
+// then writes, so a crash mid-write can leave a truncated or empty file — and
+// every reader here treats an unreadable/empty trust file as "absent", which
+// silently DROPS protection: an empty `root` re-opens TOFU re-pinning to an
+// attacker's root, and an unparseable `highwater` resets the rollback floor to
+// -1. The rename makes a reader see either the old file or the complete new one.
+func writeTrustFile(path, content string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	return os.WriteFile(p, []byte(rootPub+"\n"), 0o600)
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName) // no-op after a successful rename
+	if _, err := tmp.WriteString(content); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmpName, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, path)
 }
 
 // verifiedPath is the per-clone cache of the last fully-verified policy head and
@@ -83,10 +114,7 @@ func writeVerified(head, rootPub string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
-		return err
-	}
-	return os.WriteFile(p, []byte(head+" "+rootPub+"\n"), 0o600)
+	return writeTrustFile(p, head+" "+rootPub+"\n")
 }
 
 // highwaterPath is the per-clone record of the highest policy version this clone
@@ -123,10 +151,7 @@ func writeHighwater(v int) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
-		return err
-	}
-	return os.WriteFile(p, []byte(strconv.Itoa(v)+"\n"), 0o600)
+	return writeTrustFile(p, strconv.Itoa(v)+"\n")
 }
 
 // trustedPolicy verifies the signed chain AND that its root matches this clone's
