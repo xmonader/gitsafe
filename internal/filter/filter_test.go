@@ -62,6 +62,36 @@ func (e *testEnv) encrypt(t *testing.T, plaintext []byte) []byte {
 	return format.Wrap(e.recipients, ct)
 }
 
+// TestCleanEncryptsMagicPrefixedPlaintext guards the crown-jewel leak: a
+// plaintext (or binary) secret whose first bytes happen to equal the envelope
+// magic must still be ENCRYPTED, not passed through as "already wrapped". A
+// prefix check alone would commit it in cleartext.
+func TestCleanEncryptsMagicPrefixedPlaintext(t *testing.T) {
+	e := newEnv(t)
+	// Real secret content that merely starts with the 9-byte magic.
+	input := append(append([]byte{}, format.Magic...), []byte("MY_REAL_SECRET=hunter2")...)
+	out, err := Clean(input, "a.env", e.deps())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// It must be a *valid* envelope that decrypts back to the input...
+	env, perr := format.Parse(out)
+	if perr != nil {
+		t.Fatalf("output is not a valid envelope: %v", perr)
+	}
+	got, derr := secret.Decrypt(env.Ciphertext, e.id)
+	if derr != nil {
+		t.Fatalf("decrypt failed: %v", derr)
+	}
+	if !bytes.Equal(got, input) {
+		t.Fatalf("round-trip mismatch")
+	}
+	// ...and the cleartext must NOT appear verbatim in the stored blob.
+	if bytes.Contains(out, []byte("MY_REAL_SECRET=hunter2")) {
+		t.Fatal("PLAINTEXT LEAK: secret content present unencrypted in the stored blob")
+	}
+}
+
 func TestCleanEncryptsPlaintext(t *testing.T) {
 	e := newEnv(t)
 	out, err := Clean([]byte("SECRET=1"), "a.env", e.deps())

@@ -60,7 +60,14 @@ func Clean(input []byte, path string, d Deps) ([]byte, error) {
 		return stored, nil
 	}
 
-	if format.IsWrapped(input) {
+	// Treat input as already-encrypted only if it is a STRUCTURALLY VALID
+	// envelope, not merely one starting with the magic bytes. A prefix-only check
+	// (IsWrapped) would let a plaintext/binary secret that happens to begin with
+	// the magic pass through unencrypted into git, or silently overwrite new
+	// content with the stored blob. Parse validates header length, JSON, and
+	// version, so a coincidental or crafted prefix is rejected and falls through
+	// to encryption below.
+	if _, perr := format.Parse(input); perr == nil {
 		stored, found, err := d.StoredBlob(path)
 		if err != nil {
 			return nil, err

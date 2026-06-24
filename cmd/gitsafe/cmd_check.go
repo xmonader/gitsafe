@@ -54,7 +54,10 @@ func cmdCheck(args []string) error {
 		if !found {
 			continue
 		}
-		if !format.IsWrapped(blob) {
+		// A valid envelope must PARSE, not merely start with the magic bytes —
+		// otherwise a plaintext secret crafted to begin with the magic would pass
+		// the check while sitting in git as cleartext.
+		if _, perr := format.Parse(blob); perr != nil {
 			leaking = append(leaking, f)
 		}
 	}
