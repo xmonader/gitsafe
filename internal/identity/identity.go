@@ -153,7 +153,13 @@ func Lock(passphrase string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(Path(), enc, 0o600)
+	if err := os.WriteFile(Path(), enc, 0o600); err != nil {
+		return err
+	}
+	// WriteFile does not change the mode of an existing file, so if the identity
+	// already existed with looser permissions, enforce 0600 explicitly — the
+	// private key must never be group/world-readable.
+	return os.Chmod(Path(), 0o600)
 }
 
 // Load reads the identity from Path, decrypting it first if it is

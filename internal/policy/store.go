@@ -210,13 +210,20 @@ func (s *Store) Mutate(signer string, priv ed25519.PrivateKey, fn func(*Policy) 
 	return s.save(&next)
 }
 
-// clone deep-copies a policy via JSON round-trip, clearing the signature.
+// clone deep-copies a policy via JSON round-trip, clearing the signature. A
+// Policy contains only JSON-serializable fields, so marshalling it and
+// unmarshalling the result back into the same type cannot fail; an error would
+// mean a programming error (an unserializable field was added), so we panic
+// rather than silently return a half-built policy that could be signed.
 func clone(p *Policy) Policy {
-	b, _ := json.Marshal(p)
+	b, err := json.Marshal(p)
+	if err != nil {
+		panic("policy: marshal during clone: " + err.Error())
+	}
 	var out Policy
-	// Round-trips our own just-marshaled Policy, so unmarshal cannot fail in
-	// practice; the result is overwritten below regardless.
-	_ = json.Unmarshal(b, &out)
+	if err := json.Unmarshal(b, &out); err != nil {
+		panic("policy: unmarshal during clone: " + err.Error())
+	}
 	out.Sig = ""
 	out.Signer = ""
 	return out

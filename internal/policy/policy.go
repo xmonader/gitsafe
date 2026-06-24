@@ -193,7 +193,10 @@ func (p *Policy) Recipients(resource string) []string {
 	readers, public := p.Readers(resource)
 	var out []string
 	for name, m := range p.Keyring {
-		if m.Status == "revoked" {
+		if m.Status == "revoked" || m.Enc == "" {
+			// Skip a member with no encryption key: including "" would make
+			// age.ParseX25519Recipient fail and block encrypting the secret to
+			// everyone, so one malformed keyring entry can't break the whole branch.
 			continue
 		}
 		if public || readers[name] {
@@ -271,7 +274,9 @@ func verbSatisfies(have, need string) bool {
 
 // matchResource matches a ref glob (* within a segment, ** across) against ref.
 func matchResource(pattern, ref string) bool {
-	re, err := regexp.Compile("^" + globToRegexp(pattern) + "$")
+	// Anchor with \z (end of text), not $: in Go's regexp $ also matches just
+	// before a trailing newline, so a ref ending in "\n" wouldn't over-match.
+	re, err := regexp.Compile("^" + globToRegexp(pattern) + `\z`)
 	if err != nil {
 		return false
 	}

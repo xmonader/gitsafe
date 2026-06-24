@@ -73,7 +73,9 @@ func Match(p string, marks []string) bool {
 
 // globMatch matches a glob (* within a segment, ** across segments) against s.
 func globMatch(pattern, s string) bool {
-	re, err := regexp.Compile("^" + globToRegexp(pattern) + "$")
+	// Anchor with \z (end of text), not $: in Go's regexp $ also matches just
+	// before a trailing newline, which would let "secret.env\n" over-match.
+	re, err := regexp.Compile("^" + globToRegexp(pattern) + `\z`)
 	if err != nil {
 		return false
 	}
